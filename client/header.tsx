@@ -26,6 +26,8 @@ export interface HeaderSlots {
   settings?: ReactNode;
   /** Start of the toolbar: search box, Filters, Columns, the view switch (pbd-759.4 / .8). */
   toolbarStart?: ReactNode;
+  /** After the toolbar start: the tree / board / charts switch (client/view-switch.tsx). */
+  viewSwitch?: ReactNode;
   /** End of the toolbar: New issue (pbd-125.*). */
   toolbarEnd?: ReactNode;
   /** Under the toolbar: filter panel, column panel, active chips (pbd-759.4). */
@@ -84,10 +86,11 @@ export function Header({ shown, slots, onExpandAll, onCollapseAll, compact }: { 
       {/* A pinned card (two-card mode) takes the list's place, and its controls step aside with it. */}
       {ui.focusId ? null : <StatLine shown={shown} />}
       <StaleBar />
-      {hasRows && ui.view === "tree" && !ui.focusId ? (
+      {hasRows && !ui.focusId ? (
         <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginTop: 4, flexWrap: "wrap", zIndex: 5 }}>
           {slots.toolbarStart}
           <View style={{ flex: 1 }} />
+          {slots.viewSwitch}
           <Btn
             pal={pal}
             testID="beads-closed"
@@ -95,8 +98,12 @@ export function Header({ shown, slots, onExpandAll, onCollapseAll, compact }: { 
             pressed={ui.showClosed}
             onPress={() => dispatch({ type: "showClosed", on: !ui.showClosed })}
           />
-          <Btn pal={pal} icon="ChevronsUpDown" title={t.expandAll} testID="beads-expand-all" onPress={onExpandAll} />
-          <Btn pal={pal} icon="ChevronsDownUp" title={t.collapseAll} testID="beads-collapse-all" onPress={onCollapseAll} />
+          {ui.view === "tree" ? (
+            <>
+              <Btn pal={pal} icon="ChevronsUpDown" title={t.expandAll} testID="beads-expand-all" onPress={onExpandAll} />
+              <Btn pal={pal} icon="ChevronsDownUp" title={t.collapseAll} testID="beads-collapse-all" onPress={onCollapseAll} />
+            </>
+          ) : null}
           {slots.toolbarEnd}
         </View>
       ) : null}

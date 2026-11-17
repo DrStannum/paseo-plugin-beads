@@ -28,6 +28,9 @@ import { Header, type HeaderSlots } from "./header.tsx";
 import { StoreProvider, useStore } from "./store.tsx";
 import { SPLITTER_W, Splitter } from "./splitter.tsx";
 import { Tree } from "./tree.tsx";
+import { ViewSwitch } from "./view-switch.tsx";
+import { BoardView } from "./views/board.tsx";
+import { ChartsView } from "./views/charts/index.tsx";
 
 /** Beyond this the panel is one column and the card is an overlay. */
 export const NARROW_PX = 900;
@@ -64,6 +67,8 @@ function Body({ compactHost }: { compactHost: boolean }) {
     () => (index && passes ? flattenTree(index, passes, expanded, ui.sort, Boolean(ui.query.trim())) : null),
     [index, passes, expanded, ui.sort, ui.query],
   );
+  /** What the charts count: the rows the tree would show (reference state.rows.filter(passes)). */
+  const viewRows = useMemo(() => (index && passes ? index.rows.filter(passes) : []), [index, passes]);
 
   const rows = data.state.tree?.issues ?? null;
   const options = useMemo(() => filterOptions(rows ?? []), [rows]);
@@ -78,6 +83,7 @@ function Body({ compactHost }: { compactHost: boolean }) {
   const panel = focusId ? null : tool === "columns" && ui.view !== "tree" ? null : tool;
   const headerSlots: HeaderSlots = {
     ...HEADER_SLOTS,
+    viewSwitch: <ViewSwitch />,
     toolbarStart: (
       <>
         <SearchBox />
@@ -125,6 +131,11 @@ function Body({ compactHost }: { compactHost: boolean }) {
       <View style={{ flex: 1, flexDirection: "row", gap: narrow ? 14 : 0, padding: pad, paddingTop: 12, minHeight: 0 }}>
         {!tree ? (
           <View style={[pane, { flex: 1 }]}>{empty}</View>
+        ) : ui.view !== "tree" && !ui.focusId ? (
+          // Board and charts take the place of the tree + card pair.
+          <View testID={`beads-view-${ui.view}`} style={[pane, { flex: 1, minWidth: 0 }]}>
+            {ui.view === "charts" ? <ChartsView rows={viewRows} compact={narrow} /> : <BoardView />}
+          </View>
         ) : (
           <>
             <View style={[pane, { flex: 1, minWidth: 0 }]}>
@@ -158,7 +169,7 @@ function Body({ compactHost }: { compactHost: boolean }) {
           </>
         )}
       </View>
-      {narrow && hasCard ? (
+      {narrow && hasCard && (ui.view === "tree" || ui.focusId) ? (
         <View testID="beads-card-overlay" style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: pal.card, zIndex: 100 }}>
           <CardPane id={ui.selectedId} compact slots={cardSlots} />
         </View>
