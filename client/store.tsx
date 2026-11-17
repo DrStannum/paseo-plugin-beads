@@ -9,8 +9,7 @@
  * belongs to one workspace, so the reference's per-project keys (expanded,
  * collapsedSections, filters + query) keep their meaning; its global habits
  * (columns, sort, view, …) become per tab. The poll interval and the user's
- * name move to host settings later (pbd-bds.5) — until then pollMs lives
- * here, read through usePollMs() only.
+ * name are host settings (client/settings.tsx), not tab state.
  *
  * Later features plug in by dispatching actions (`filters`, `query`, `view`,
  * `columns`, …) and reading `ui`; nothing outside this file builds the state.
@@ -22,7 +21,6 @@ import { createContext, useContext, useEffect, useMemo, useReducer, useRef, type
 import { z } from "zod";
 import { COLUMNS, COLUMNS_DEFAULT, NO_FILTERS, REL_COLUMNS, REL_COLUMNS_DEFAULT, REL_SORT_DEFAULT, SORTERS, type Filters, type Sort } from "../shared/tree.ts";
 import { CHARTS_LIVE_INIT, CHARTS_TAB_DEFAULT, ChartsTabFields, chartsPersisted, chartsReducer, isChartsAction, type ChartsAction, type ChartsLive } from "./charts-state.ts";
-import { POLL_CHOICES, POLL_DEFAULT_MS } from "./data.ts";
 
 export type View = "tree" | "board" | "charts";
 
@@ -70,7 +68,6 @@ export const TabStateSchema = z.object({
   commentSort: z.union([z.literal(1), z.literal(-1)]).catch(1),
   /** The charts view: reading, period, step (client/charts-state.ts). */
   ...ChartsTabFields,
-  pollMs: z.number().refine((n) => POLL_CHOICES.indexOf(n) >= 0).catch(POLL_DEFAULT_MS),
   /** The card pane's dragged width in px; null = the default split (clamped on every layout). */
   cardWidth: z.number().positive().nullable().catch(null),
 });
@@ -90,7 +87,6 @@ export const TAB_DEFAULT: TabState = {
   relColumns: REL_COLUMNS_DEFAULT.slice(),
   commentSort: 1,
   ...CHARTS_TAB_DEFAULT,
-  pollMs: POLL_DEFAULT_MS,
   cardWidth: null,
 };
 
@@ -105,6 +101,8 @@ export interface UiState extends TabState, ChartsLive {
   reveal: { id: string; seq: number } | null;
   /** Two-card mode: the card pinned in the left pane (reference focusId); not remembered. */
   focusId: string | null;
+  /** Unsent comments per issue: they survive switching cards, not closing the tab. */
+  drafts: Record<string, string>;
 }
 
 export type Action =
@@ -137,7 +135,8 @@ export type Action =
   | { type: "commentSort"; dir: 1 | -1 }
   /** The charts view (client/charts-state.ts). */
   | ChartsAction
-  | { type: "pollMs"; ms: number };
+  /** The comment box of `id` changed ("" drops the draft). */
+  | { type: "draft"; id: string; text: string };
 
 function toggle(list: string[], id: string): string[] {
   return list.indexOf(id) >= 0 ? list.filter((x) => x !== id) : list.concat(id).slice(-EXPANDED_CAP);
@@ -214,8 +213,12 @@ export function reducer(s: UiState, a: Action): UiState {
       return { ...s, relExpanded: toggle(s.relExpanded, a.id) };
     case "commentSort":
       return { ...s, commentSort: a.dir };
-    case "pollMs":
-      return POLL_CHOICES.indexOf(a.ms) >= 0 ? { ...s, pollMs: a.ms } : s;
+    case "draft": {
+      const drafts = { ...s.drafts };
+      if (a.text) drafts[a.id] = a.text;
+      else delete drafts[a.id];
+      return { ...s, drafts };
+    }
   }
 }
 
@@ -234,7 +237,6 @@ function persisted(s: UiState): TabState {
     relColumns: s.relColumns,
     commentSort: s.commentSort,
     ...chartsPersisted(s),
-    pollMs: s.pollMs,
     cardWidth: s.cardWidth,
   };
 }
@@ -257,6 +259,7 @@ export function StoreProvider({ tab, children }: { tab: PluginTab; children: Rea
     ...CHARTS_LIVE_INIT,
     reveal: t.selectedId ? { id: t.selectedId, seq: 1 } : null,
     focusId: null,
+    drafts: {},
   }));
   const last = useRef<string>("");
   const p = persisted(ui);
@@ -278,10 +281,4 @@ export function useStore(): Store {
   const s = useContext(StoreContext);
   if (!s) throw new Error("useStore outside StoreProvider");
   return s;
-}
-
-/** The poll interval — the one place it is read from (host settings later, pbd-bds.5). */
-export function usePollMs(): [number, (ms: number) => void] {
-  const { ui, dispatch } = useStore();
-  return [ui.pollMs, (ms) => dispatch({ type: "pollMs", ms })];
 }

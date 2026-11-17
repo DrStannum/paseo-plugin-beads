@@ -9,7 +9,8 @@ import { ancestorsOf, buildIndex, type TreeIndex } from "../shared/tree.ts";
 import { useBeadsTree, useSearch, type BeadsData } from "./data.ts";
 import { useStrings } from "./i18n/messages.ts";
 import type { Strings } from "./i18n/strings.ts";
-import { usePollMs, useStore } from "./store.tsx";
+import { usePollMs } from "./settings.tsx";
+import { useStore } from "./store.tsx";
 import { paletteOf, type HostTheme, type Palette } from "./theme.ts";
 
 export interface Beads {

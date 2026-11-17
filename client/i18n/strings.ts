@@ -430,7 +430,15 @@ const en = {
 
   settings: 'Settings',
   settingsCurrentUser: 'Your name',
-  settingsCurrentUserHint: 'Saved in this browser. Used by the "Assign to me" button and comment authorship.',
+  settingsCurrentUserHint: 'Kept on this host, the same in every Paseo window. Used by the "Assign to me" button and comment authorship.',
+  settingsCurrentUserPlaceholder: 'you@example.com',
+  settingsIntervalHint: 'How often the panel checks the project for changes. A check that finds nothing new costs almost nothing.',
+  settingsReload: 'Try loading the saved settings again',
+  settingsReset: 'Reset',
+  settingsResetHint: 'Replace the unreadable settings with the defaults',
+  openSettings: 'Open the plugin settings',
+  eDiscardYes: 'Discard',
+  eDiscardNo: 'Keep editing',
 
   assignToMe: 'Assign to me',
   assigning: 'assigning…',
@@ -848,7 +856,15 @@ const ru: Strings = {
 
   settings: 'Настройки',
   settingsCurrentUser: 'Ваше имя',
-  settingsCurrentUserHint: 'Сохраняется в этом браузере. Используется кнопкой «Назначить меня» и авторством комментариев.',
+  settingsCurrentUserHint: 'Хранится на этом хосте, одно и то же во всех окнах Paseo. Используется кнопкой «Назначить меня» и авторством комментариев.',
+  settingsCurrentUserPlaceholder: 'you@example.com',
+  settingsIntervalHint: 'Как часто панель проверяет проект на изменения. Проверка, не нашедшая нового, почти ничего не стоит.',
+  settingsReload: 'Попробовать загрузить сохранённые настройки ещё раз',
+  settingsReset: 'Сбросить',
+  settingsResetHint: 'Заменить нечитаемые настройки значениями по умолчанию',
+  openSettings: 'Открыть настройки плагина',
+  eDiscardYes: 'Отбросить',
+  eDiscardNo: 'Продолжить правку',
 
   assignToMe: 'Назначить меня',
   assigning: 'назначаем…',

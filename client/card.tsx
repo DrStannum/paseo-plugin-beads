@@ -4,9 +4,10 @@
  * the properties, the four text blocks as markdown with issue keys as links,
  * the linked-issue tables, and the comment thread.
  *
- * Slots for other tasks: `headerActions` (new sub-issue, edit, pin —
- * pbd-125.*, pbd-759.7), `statusControl` (the status menu, pbd-125.1),
- * `commentBox` (pbd-125.3), `onLabelPress` (label → filter, pbd-759.4).
+ * What writes plugs in through CardSlots (client/write-controls.tsx):
+ * `headerActions` (new sub-issue, edit), `statusControl` (the status menu),
+ * `assigneeAction` ("Assign to me"), `notices` (a refused quick edit),
+ * `commentBox`; `onLabelPress` is label → filter.
  */
 
 import { copyText, Icon, ScrollView } from "@getpaseo/plugin/client/ui";
@@ -29,6 +30,10 @@ export interface CardSlots {
   statusControl?: (card: Card) => ReactNode;
   /** Under the comment thread (the add-comment box). */
   commentBox?: (card: Card) => ReactNode;
+  /** Beside the assignee ("Assign to me"); null when it does not apply. */
+  assigneeAction?: (card: Card) => ReactNode;
+  /** Under the headline: why the last status / assignee change was refused. */
+  notices?: (card: Card) => ReactNode;
   /** A label chip was pressed (toggle a label filter). Without it chips are plain. */
   onLabelPress?: (label: string) => void;
 }
@@ -173,7 +178,18 @@ function CardBody({ card, slots }: { card: Card; slots: CardSlots }) {
     if (node) meta.push([label, node]);
   };
   push(t.mOwner, text(card.owner));
-  push(t.mAssignee, text(card.assignee));
+  // The row stays even with nobody assigned when "Assign to me" is on offer —
+  // that is exactly when it is most useful.
+  const assignAction = slots.assigneeAction?.(card) ?? null;
+  if (card.assignee || assignAction) {
+    meta.push([
+      t.mAssignee,
+      <View key="a" style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 6 }}>
+        {text(card.assignee)}
+        {assignAction}
+      </View>,
+    ]);
+  }
   if (card.labels.length) {
     meta.push([
       t.mLabels,
@@ -233,7 +249,8 @@ function CardBody({ card, slots }: { card: Card; slots: CardSlots }) {
           {card.title}
         </Text>
       </View>
-      <View style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 10, marginBottom: 12 }}>
+      {/* Above the properties: the status menu opens over them. */}
+      <View style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 10, marginBottom: 12, zIndex: 10 }}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
           <TypeGlyph pal={pal} type={card.issue_type} />
           <Text style={{ fontSize: FONT.meta, color: pal.ink2 }}>{typeLabel(t, card.issue_type)}</Text>
@@ -261,6 +278,8 @@ function CardBody({ card, slots }: { card: Card; slots: CardSlots }) {
           <Mark pal={pal} kind="blocked" label={t.blocked} title={t.blockedTip(blockers)} />
         ) : null}
       </View>
+
+      {slots.notices?.(card)}
 
       {meta.length ? (
         <View style={{ gap: 5, marginBottom: 4 }}>

@@ -32,23 +32,43 @@ import { Tree } from "./tree.tsx";
 import { ViewSwitch } from "./view-switch.tsx";
 import { BoardView } from "./views/board.tsx";
 import { ChartsView } from "./views/charts/index.tsx";
+import { EditorHost } from "./editor.tsx";
+import { OpenSettingsContext, useBeadsSettings } from "./settings.tsx";
+import { AssignMe, CardHeaderActions, CardNotices, CommentBox, ExportBadge, NewIssueButton, SettingsButton, StatusControl, SyncButton } from "./write-controls.tsx";
+import { WritesProvider } from "./writes.tsx";
 
 /** Beyond this the panel is one column and the card is an overlay. */
 export const NARROW_PX = 900;
 
-export function BeadsPanel(props: PluginWorkspacePanelProps) {
+/** `openSettings` opens the plugin's page in Paseo's Settings (index.client.tsx passes it). */
+export function BeadsPanel(props: PluginWorkspacePanelProps & { openSettings?: () => void }) {
   return (
-    <StoreProvider tab={props.tab}>
-      <BeadsProvider hostId={props.host.id} workspaceId={props.workspaceId} theme={props.theme}>
-        <Body compactHost={props.layout.compact} />
-      </BeadsProvider>
-    </StoreProvider>
+    <OpenSettingsContext.Provider value={props.openSettings ?? null}>
+      <StoreProvider tab={props.tab}>
+        <BeadsProvider hostId={props.host.id} workspaceId={props.workspaceId} theme={props.theme}>
+          <WritesProvider tab={props.tab}>
+            <Body compactHost={props.layout.compact} />
+            <EditorHost />
+          </WritesProvider>
+        </BeadsProvider>
+      </StoreProvider>
+    </OpenSettingsContext.Provider>
   );
 }
 
-const HEADER_SLOTS: HeaderSlots = {};
+const HEADER_SLOTS: HeaderSlots = {
+  badge: <ExportBadge />,
+  actions: <SyncButton />,
+  settings: <SettingsButton />,
+  toolbarEnd: <NewIssueButton />,
+};
 const NONE = () => false;
-const CARD_SLOTS: CardSlots = {};
+const CARD_SLOTS: CardSlots = {
+  headerActions: (card) => <CardHeaderActions card={card} />,
+  statusControl: (card) => <StatusControl card={card} />,
+  notices: (card) => <CardNotices card={card} />,
+  commentBox: (card) => <CommentBox card={card} />,
+};
 
 function Body({ compactHost }: { compactHost: boolean }) {
   const { pal, t, data, index, search } = useBeads();
@@ -100,12 +120,15 @@ function Body({ compactHost }: { compactHost: boolean }) {
       </>
     ),
   };
+  const me = useBeadsSettings().currentUser.trim();
   const cardSlots = useMemo<CardSlots>(
     () => ({
       ...CARD_SLOTS,
+      // Offered only with a name set, on a writable card not already assigned to it.
+      assigneeAction: (card) => (card.mode === "bd" && me && me !== (card.assignee ?? "") ? <AssignMe card={card} /> : null),
       onLabelPress: (label: string) => dispatch({ type: "filters", filters: { ...ui.filters, labels: toggleValue(ui.filters.labels, label) } }),
     }),
-    [dispatch, ui.filters],
+    [dispatch, ui.filters, me],
   );
 
   const tree = data.state.tree;

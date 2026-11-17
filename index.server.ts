@@ -7,6 +7,7 @@ import {
   comment, create, edit, exportNow, health, issue, jobStatus, ping, revision, search, sync, tree,
 } from "./server/handlers.ts";
 import { shutdown } from "./server/lifecycle.ts";
+import { beadsSettings } from "./shared/settings.ts";
 
 export default function contribute(server: PluginServerContext) {
   server.handle(pingRpc, ping);
@@ -21,5 +22,7 @@ export default function contribute(server: PluginServerContext) {
   server.handle(exportRpc, exportNow);
   server.handle(syncRpc, sync);
   server.handle(jobStatusRpc, jobStatus);
+  // The reader's name and the refresh interval; the client reads them with useSettings.
+  server.registerSettings(beadsSettings);
   return shutdown;
 }

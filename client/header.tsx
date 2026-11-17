@@ -13,13 +13,16 @@ import { Fragment, type ReactNode } from "react";
 import { Text, View } from "react-native";
 import { STATUS_ORDER } from "../shared/charts/types.ts";
 import { useBeads } from "./beads.tsx";
-import { POLL_CHOICES } from "./data.ts";
+import { POLL_CHOICES } from "../shared/settings.ts";
 import { baseName, statusLabel } from "./format.ts";
-import { usePollMs, useStore } from "./store.tsx";
+import { usePollMs } from "./settings.tsx";
+import { useStore } from "./store.tsx";
 import { FONT, MONO, mix } from "./theme.ts";
 import { Btn, Dropdown, titled } from "./ui.tsx";
 
 export interface HeaderSlots {
+  /** After the mode badge: the background export / sync badge. */
+  badge?: ReactNode;
   /** Left of the interval picker: the Sync button and export badge (pbd-125.*). */
   actions?: ReactNode;
   /** Right of Refresh: the settings button (pbd-125.*). */
@@ -67,6 +70,7 @@ export function Header({ shown, slots, onExpandAll, onCollapseAll, compact }: { 
               </Text>
             </View>
           ) : null}
+          {slots.badge}
         </View>
         <View style={{ flex: 1 }} />
         <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>

@@ -8,8 +8,8 @@ import { stringsFor, type Strings } from "./strings.ts";
  */
 export const messages = defineTranslations({
   resources: {
-    en: { panelTitle: "Beads", openPanel: "Open Beads" },
-    ru: { panelTitle: "Beads", openPanel: "Открыть Beads" },
+    en: { panelTitle: "Beads", openPanel: "Open Beads", settingsTitle: "Beads" },
+    ru: { panelTitle: "Beads", openPanel: "Открыть Beads", settingsTitle: "Beads" },
   },
 });
 

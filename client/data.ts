@@ -62,6 +62,12 @@ export interface BeadsData {
   loading: boolean;
   /** Fetch the tree now (Refresh, Retry, after a write). */
   load(reason?: LoadReason): Promise<void>;
+  /**
+   * One revision check now, outside the interval (the export watcher polls
+   * this fast while a background job runs). Answers the job's status, or
+   * null if the check failed or the panel is gone.
+   */
+  checkNow(): Promise<ExportStatus | null>;
 }
 
 /**
@@ -115,6 +121,8 @@ export function useBeadsTree(hostId: string, workspaceId: string, pollMs: number
 
   const loadRef = useRef(load);
   loadRef.current = load;
+  const checkRef = useRef<(() => Promise<ExportStatus | null>) | null>(null);
+  const checkNow = useCallback(() => (checkRef.current ? checkRef.current() : Promise.resolve(null)), []);
 
   // The revision poll: a chain of timeouts, so each wait can differ (backoff).
   useEffect(() => {
@@ -123,23 +131,23 @@ export function useBeadsTree(hostId: string, workspaceId: string, pollMs: number
     const current = () => qc.getQueryData<TreeState>(key);
     const patch = (fn: (s: TreeState) => TreeState) => qc.setQueryData<TreeState>(key, (s) => (s ? fn(s) : s));
 
-    async function check() {
+    async function check(): Promise<ExportStatus | null> {
       const s = current();
-      if (!s) return;
+      if (!s) return null;
       let res: any;
       try {
         res = await revCall({ workspaceId });
       } catch {
         res = null;
       }
-      if (disposed) return;
+      if (disposed) return null;
       if (!res || !res.ok) {
         patch((x) => ({ ...x, failures: Math.min(x.failures + 1, 16) }));
-        return;
+        return null;
       }
       patch((x) => (x.export === res.export ? x : { ...x, export: res.export }));
       const held = current();
-      if (!held) return;
+      if (!held) return res.export ?? null;
       let fetched = false;
       if (res.revision && res.revision !== held.revision) {
         const exp: ExportStatus | undefined = res.export;
@@ -158,11 +166,13 @@ export function useBeadsTree(hostId: string, workspaceId: string, pollMs: number
       } else if (held.failures) {
         patch((x) => ({ ...x, failures: 0 }));
       }
-      if (disposed) return;
+      if (disposed) return null;
       if (res.loadError && !fetched) {
         patch((x) => (x.tree ? { ...x, loadIssue: { kind: "backend", code: res.loadError.code, message: res.loadError.message } } : x));
       }
+      return res.export ?? null;
     }
+    checkRef.current = check;
 
     function arm() {
       if (disposed) return;
@@ -186,6 +196,7 @@ export function useBeadsTree(hostId: string, workspaceId: string, pollMs: number
     });
     return () => {
       disposed = true;
+      if (checkRef.current === check) checkRef.current = null;
       if (timer) clearTimeout(timer);
       sub.remove();
     };
@@ -201,7 +212,7 @@ export function useBeadsTree(hostId: string, workspaceId: string, pollMs: number
   }, [state]);
 
   const loading = !query.data || (!state.tree && !state.empty);
-  return useMemo(() => ({ state, loading, load }), [state, loading, load]);
+  return useMemo(() => ({ state, loading, load, checkNow }), [state, loading, load, checkNow]);
 }
 
 /** Move to a revision holding the same data: the tree and the cards read at `from` move with it. */

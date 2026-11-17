@@ -22,6 +22,7 @@ import {
 import { comment, create, edit, exportNow, issue, jobStatus, revision, sync, tree } from "../server/handlers.ts";
 import { resetBdPath } from "../server/beads/run.ts";
 import { call, fakeCtx, sleep, tmpDir, usePath } from "./support/harness.ts";
+import { computeFields, formFromCard } from "../shared/form.ts";
 
 const ORIGINAL_PATH = process.env.PATH || "";
 const ORIGINAL_ACTOR = process.env.BEADS_ACTOR;
@@ -134,6 +135,24 @@ describe("write path against a real bd", { skip: bdAvailable() ? false : "no bd 
     assert.deepEqual([...card.labels].sort(), ["area:ui", "from:test"]);
     assert.equal(card.description, "body **text**");
     assert.equal(card.notes, "a note");
+  });
+
+  it("the form's diff round-trips: what the form shows after a save is what bd stored", async () => {
+    // The edit form's own path (shared/form.ts): open on the card, change some
+    // fields, send only the diff, then reopen on the answer.
+    const before = (await call(issueRpc, issue, { ...ws, id: made }, ctx)).issue;
+    const original = formFromCard(before);
+    const changed = { ...original, labels: ["area:ui", "from:form"], parent: "", design: "from the form", assignee: "" };
+    const fields = computeFields(original, changed, false);
+    assert.deepEqual(Object.keys(fields).sort(), ["addLabels", "assignee", "design", "parent", "removeLabels"]);
+    const res = await call(editRpc, edit, { ...ws, id: made, fields: fields as Record<string, unknown> }, ctx);
+    assert.equal(res.ok, true, JSON.stringify(res).slice(0, 300));
+    const after = formFromCard(res.issue);
+    assert.deepEqual({ ...after, labels: [...after.labels].sort() }, { ...changed, labels: [...changed.labels].sort() });
+    assert.deepEqual(computeFields(after, after, false), {});
+    // put the parent back for the tests below
+    const back = await call(editRpc, edit, { ...ws, id: made, fields: { parent: A } }, ctx);
+    assert.equal(back.ok, true);
   });
 
   it("the new issue is in the tree, under its parent, right away", async () => {
