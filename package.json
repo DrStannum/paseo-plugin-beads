@@ -23,6 +23,7 @@
     "test": "npm run typecheck && node --test tests/*.test.ts",
     "shot": "node tests/shot.mjs",
     "shot:charts": "node tests/shot-charts.mjs",
+    "shot:writes": "node tests/shot-writes.mjs",
     "shot:board": "node tests/shot-board.mjs",
     "fixture": "node tests/fixture/build.mjs"
   },
