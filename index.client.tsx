@@ -1,19 +1,20 @@
 import type { PluginClientContext } from "@getpaseo/plugin/client";
 import icon from "./client/icon.svg";
+import { messages } from "./client/i18n/messages.ts";
 import { BeadsPanel } from "./client/panel.tsx";
 
 export default function contribute(client: PluginClientContext) {
   const cleanups = [
     client.addWorkspacePanel({
       id: "beads",
-      title: "Beads",
+      title: messages.message("panelTitle"),
       icon: { svg: icon },
       locations: ["workspace", "explorer"],
       Component: BeadsPanel,
     }),
     client.addCommandCenterItem({
       id: "open-beads",
-      title: "Open Beads",
+      title: messages.message("openPanel"),
       icon: { svg: icon },
       keywords: ["beads", "bd", "issues", "tasks"],
       context: "workspace",
