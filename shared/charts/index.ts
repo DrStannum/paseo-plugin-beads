@@ -11,3 +11,4 @@ export * from "./rows.ts";
 export * from "./cuts.ts";
 export * from "./flow.ts";
 export * from "./people.ts";
+export * from "./scene.ts";
