@@ -7,10 +7,8 @@
 import { changedIds } from "../shared/tree.ts";
 import type { Card, Counts, ExportStatus, Failure, Mode, Stale, TreeRow } from "../shared/types.ts";
 
-/** Poll interval choices, in ms (reference POLL_CHOICES). */
-export const POLL_CHOICES: readonly number[] = [10000, 30000, 60000, 300000, 900000];
-/** Default poll interval. A beads tree moves in minutes, not seconds. */
-export const POLL_DEFAULT_MS = 300000;
+/** Poll interval choices and default: part of the host settings (shared/settings.ts). */
+export { POLL_CHOICES, POLL_DEFAULT_MS } from "../shared/settings.ts";
 /** Ceiling of the backoff after failures (or the chosen interval, if longer). */
 export const POLL_BACKOFF_MAX_MS = 300000;
 /** Workspaces whose last good tree stays cached between mounts. */
