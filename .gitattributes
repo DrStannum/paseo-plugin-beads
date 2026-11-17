@@ -1,0 +1,9 @@
+# Text files keep LF in the repository, whatever the checkout platform does.
+* text=auto eol=lf
+
+*.png binary
+*.svg text eol=lf
+
+# The screenshots are documentation and regression fixtures, not source —
+# keep them out of language statistics and collapsed in diffs.
+tests/*.png linguist-generated=true

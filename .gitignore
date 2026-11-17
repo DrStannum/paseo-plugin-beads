@@ -1,0 +1,28 @@
+node_modules/
+.DS_Store
+*.log
+tests/projects.local.json
+
+# A beads tracker for this repository's own work, should you keep one: it is
+# personal, it can quote unreleased work, and it never belongs in a commit.
+.beads/
+.dolt/
+*.db
+.beads-credential-key
+RECOVERY*.md
+SESSION*.md
+
+# Notes and settings for coding agents — likewise personal.
+AGENTS.md
+CLAUDE.md
+CLAUDE.local.md
+.claude/
+.agents/
+.codex/
+
+# Build and typecheck output.
+dist/
+*.tsbuildinfo
+
+# Beads / Dolt files (added by bd init)
+.beads/proxieddb/
