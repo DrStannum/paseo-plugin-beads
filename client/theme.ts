@@ -11,82 +11,13 @@
 
 import type { PluginWorkspacePanelProps } from "@getpaseo/plugin/client";
 import { Platform } from "react-native";
+import { REF, isDarkSurface, mix } from "./tokens.ts";
 
 export type HostTheme = PluginWorkspacePanelProps["theme"];
 
-interface Rgba {
-  r: number;
-  g: number;
-  b: number;
-  a: number;
-}
-
-function parse(color: string): Rgba | null {
-  const c = color.trim();
-  let m = /^#([0-9a-f]{3,8})$/i.exec(c);
-  if (m) {
-    let h = m[1]!;
-    if (h.length === 3 || h.length === 4) h = h.split("").map((x) => x + x).join("");
-    const n = (i: number) => parseInt(h.slice(i, i + 2), 16);
-    return { r: n(0), g: n(2), b: n(4), a: h.length === 8 ? n(6) / 255 : 1 };
-  }
-  m = /^rgba?\(([^)]+)\)$/i.exec(c);
-  if (m) {
-    const p = m[1]!.split(/[\s,/]+/).filter(Boolean).map(Number);
-    return { r: p[0] ?? 0, g: p[1] ?? 0, b: p[2] ?? 0, a: p[3] ?? 1 };
-  }
-  return null;
-}
-
-function fmt(c: Rgba): string {
-  const r = Math.round(c.r);
-  const g = Math.round(c.g);
-  const b = Math.round(c.b);
-  return c.a >= 0.999 ? `rgb(${r}, ${g}, ${b})` : `rgba(${r}, ${g}, ${b}, ${Math.round(c.a * 1000) / 1000})`;
-}
-
-/** color-mix(in srgb, a pct%, b): `pct` of `a` over `b`. Unparseable input returns `a`. */
-export function mix(a: string, pct: number, b: string): string {
-  const x = parse(a);
-  const y = b === "transparent" ? { r: x?.r ?? 0, g: x?.g ?? 0, b: x?.b ?? 0, a: 0 } : parse(b);
-  if (!x || !y) return a;
-  const p = pct / 100;
-  return fmt({ r: x.r * p + y.r * (1 - p), g: x.g * p + y.g * (1 - p), b: x.b * p + y.b * (1 - p), a: x.a * p + y.a * (1 - p) });
-}
-
-/** The colour with its alpha scaled to `pct` percent. */
-export function alpha(color: string, pct: number): string {
-  return mix(color, pct, "transparent");
-}
-
-function luminance(color: string): number {
-  const c = parse(color);
-  if (!c) return 0;
-  const lin = (v: number) => {
-    const s = v / 255;
-    return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
-  };
-  return 0.2126 * lin(c.r) + 0.7152 * lin(c.g) + 0.0722 * lin(c.b);
-}
-
-const REF = {
-  light: {
-    accent: "#2a78d6",
-    good: "#0ca30c",
-    warning: "#fab219",
-    critical: "#d03b3b",
-    type: { epic: "#2a78d6", bug: "#eb6834", feature: "#1baf7a" },
-    labels: ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#4a3aa7", "#e34948"],
-  },
-  dark: {
-    accent: "#3987e5",
-    good: "#0ca30c",
-    warning: "#fab219",
-    critical: "#d03b3b",
-    type: { epic: "#3987e5", bug: "#d95926", feature: "#199e70" },
-    labels: ["#3987e5", "#d95926", "#199e70", "#c98500", "#d55181", "#008300", "#9085e9", "#e66767"],
-  },
-};
+// The arithmetic, the light/dark rule and the reference hues are shared with
+// the charts' palette (client/charts/palette.ts) through client/tokens.ts.
+export { alpha, mix } from "./tokens.ts";
 
 export interface Palette {
   dark: boolean;
@@ -129,7 +60,7 @@ export function paletteOf(theme: HostTheme): Palette {
   const hit = cache.get(theme.colors);
   if (hit) return hit;
   const c = theme.colors;
-  const dark = luminance(c.surface0) < 0.2;
+  const dark = isDarkSurface(c.surface0);
   const ref = dark ? REF.dark : REF.light;
   const good = c.statusSuccess || ref.good;
   const warning = c.statusWarning || ref.warning;

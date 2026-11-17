@@ -9,13 +9,14 @@
  * where one fits, from the reference's light/dark values otherwise, picking
  * light or dark by the luminance of surface0.
  *
- * Plain TS with no runtime imports, so node tests and the preview script can
- * load it. NOTE for reconciliation: client/theme.ts (written concurrently)
- * may grow the same derived tokens (grid, ink2, type/label palettes); when it
- * does, this file should read them from there instead of deriving its own.
+ * Plain TS importing only client/tokens.ts, so node tests and the preview
+ * script can load it. The color arithmetic, the light/dark rule and the reference hues
+ * come from client/tokens.ts — the same ones the panel's palette
+ * (client/theme.ts) uses.
  */
 
 import type { PluginWorkspacePanelProps } from "@getpaseo/plugin/client";
+import { REF, isDarkSurface, mix, over } from "../tokens.ts";
 
 export type HostColors = PluginWorkspacePanelProps["theme"]["colors"];
 
@@ -58,76 +59,17 @@ export interface ChartColors {
   types: { epic: string; bug: string; feature: string };
 }
 
-// ── color arithmetic ─────────────────────────────────────────────────
-
-interface Rgba { r: number; g: number; b: number; a: number }
-
-/** #rgb, #rrggbb, #rrggbbaa, rgb()/rgba(); null for anything else. */
-export function parseColor(c: string): Rgba | null {
-  const s = String(c).trim();
-  let m = /^#([0-9a-f]{3,8})$/i.exec(s);
-  if (m) {
-    const h = m[1]!;
-    if (h.length === 3) {
-      return { r: parseInt(h[0]! + h[0]!, 16), g: parseInt(h[1]! + h[1]!, 16), b: parseInt(h[2]! + h[2]!, 16), a: 1 };
-    }
-    if (h.length === 6 || h.length === 8) {
-      return {
-        r: parseInt(h.slice(0, 2), 16), g: parseInt(h.slice(2, 4), 16), b: parseInt(h.slice(4, 6), 16),
-        a: h.length === 8 ? parseInt(h.slice(6, 8), 16) / 255 : 1,
-      };
-    }
-    return null;
-  }
-  m = /^rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)(?:[\s,/]+([\d.]+%?))?\s*\)$/i.exec(s);
-  if (m) {
-    const aRaw = m[4];
-    const a = aRaw == null ? 1 : aRaw.endsWith("%") ? parseFloat(aRaw) / 100 : parseFloat(aRaw);
-    return { r: +m[1]!, g: +m[2]!, b: +m[3]!, a };
-  }
-  return null;
-}
-
-const hex2 = (v: number) => {
-  const s = Math.round(Math.max(0, Math.min(255, v))).toString(16);
-  return s.length < 2 ? `0${s}` : s;
-};
-
-/** `pct` % of `a` over `b`, as CSS color-mix(in srgb, a pct%, b) does. Unparseable → `a`. */
-export function mix(a: string, pct: number, b: string): string {
-  const x = parseColor(a);
-  const y = parseColor(b);
-  if (!x || !y) return a;
-  const k = Math.max(0, Math.min(100, pct)) / 100;
-  // A translucent `a` is flattened onto `b` first: a mark is opaque.
-  const xr = x.r * x.a + y.r * (1 - x.a);
-  const xg = x.g * x.a + y.g * (1 - x.a);
-  const xb = x.b * x.a + y.b * (1 - x.a);
-  return `#${hex2(xr * k + y.r * (1 - k))}${hex2(xg * k + y.g * (1 - k))}${hex2(xb * k + y.b * (1 - k))}`;
-}
-
-/** Relative luminance 0..1; 1 for an unparseable color (treated as light). */
-export function luminance(c: string): number {
-  const p = parseColor(c);
-  if (!p) return 1;
-  const ch = (v: number) => {
-    const s = v / 255;
-    return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
-  };
-  return 0.2126 * ch(p.r) + 0.7152 * ch(p.g) + 0.0722 * ch(p.b);
-}
-
-// ── the reference's own palettes (map §20) ───────────────────────────
-
-const LABELS_LIGHT = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#4a3aa7", "#e34948"];
-const LABELS_DARK = ["#3987e5", "#d95926", "#199e70", "#c98500", "#d55181", "#008300", "#9085e9", "#e66767"];
+// The arithmetic and the reference's hues live in client/tokens.ts, shared
+// with the panel's palette (client/theme.ts); re-exported for the tests and
+// the preview scripts.
+export { luminance, mix, parseColor } from "../tokens.ts";
 
 /** All chart colors for a host theme. */
 export function chartColors(c: HostColors): ChartColors {
-  const dark = luminance(c.surface0) < 0.4;
+  const dark = isDarkSurface(c.surface0);
+  const ref = dark ? REF.dark : REF.light;
   const card = c.surface1 || c.surface0;
   const ink = c.foreground;
-  const dataAccent = dark ? "#3987e5" : "#2a78d6";
   return {
     dark,
     page: c.surface0,
@@ -137,11 +79,11 @@ export function chartColors(c: HostColors): ChartColors {
     ink,
     ink2: mix(ink, 72, c.foregroundMuted),
     muted: c.foregroundMuted,
-    grid: dark ? mix("#2c2c2a", 60, mix(c.border, 100, card)) : mix("#e1e0d9", 60, mix(c.border, 100, card)),
-    accent: dataAccent,
+    grid: mix(ref.grid, 60, over(c.border, card)),
+    accent: ref.accent,
     uiAccent: c.accent,
     accentForeground: c.accentForeground,
-    accentSoft: mix(dataAccent, 45, card),
+    accentSoft: mix(ref.accent, 45, card),
     good: c.statusSuccess,
     warning: c.statusWarning,
     critical: c.statusDanger,
@@ -149,10 +91,8 @@ export function chartColors(c: HostColors): ChartColors {
     sel: mix(c.accent, 14, card),
     tipBg: ink,
     tipFg: card,
-    labels: dark ? LABELS_DARK : LABELS_LIGHT,
-    types: dark
-      ? { epic: "#3987e5", bug: "#d95926", feature: "#199e70" }
-      : { epic: "#2a78d6", bug: "#eb6834", feature: "#1baf7a" },
+    labels: ref.labels,
+    types: ref.type,
   };
 }
 
