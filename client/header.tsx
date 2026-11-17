@@ -17,7 +17,7 @@ import { POLL_CHOICES } from "../shared/settings.ts";
 import { baseName, statusLabel } from "./format.ts";
 import { usePollMs } from "./settings.tsx";
 import { useStore } from "./store.tsx";
-import { FONT, MONO, mix } from "./theme.ts";
+import { FONT, MONO, MONO_DOM, mix } from "./theme.ts";
 import { Btn, Dropdown, titled } from "./ui.tsx";
 
 export interface HeaderSlots {
@@ -65,7 +65,7 @@ export function Header({ shown, slots, onExpandAll, onCollapseAll, compact }: { 
                 borderRadius: 6, paddingHorizontal: 6, paddingVertical: 1, alignSelf: "center",
               }}
             >
-              <Text style={{ fontFamily: MONO, fontSize: FONT.mode, color: mode === "jsonl" ? pal.warning : pal.ink2 }}>
+              <Text {...MONO_DOM} style={{ fontFamily: MONO, fontSize: FONT.mode, color: mode === "jsonl" ? pal.warning : pal.ink2 }}>
                 {mode === "jsonl" ? t.modeJsonl : t.modeBd}
               </Text>
             </View>

@@ -13,7 +13,7 @@ import { FLASH_MS } from "./data.ts";
 import { columnLabel, fmtDate, fmtDateShort, priorityTitle, statusLabel, stringOf, typeLabel } from "./format.ts";
 import type { Strings } from "./i18n/strings.ts";
 import { useStore } from "./store.tsx";
-import { FONT, MONO, ROW_H, type Palette } from "./theme.ts";
+import { FONT, MONO, MONO_DOM, ROW_H, type Palette } from "./theme.ts";
 import { Chevron, LabelChip, Mark, PriIcon, StatusDot, TypeGlyph, titled } from "./ui.tsx";
 
 const GAP = 6;
@@ -80,7 +80,7 @@ const Row = memo(function Row({ node, idW, cols, selected, flash, pal, t, slotOf
         );
       case "id":
         return (
-          <Text key="i" numberOfLines={1} style={{ fontFamily: MONO, fontSize: FONT.id, color: pal.muted, maxWidth: idW, flexShrink: 0, opacity: closed ? 0.55 : 1 }}>
+          <Text {...MONO_DOM} key="i" numberOfLines={1} style={{ fontFamily: MONO, fontSize: FONT.id, color: pal.muted, maxWidth: idW, flexShrink: 0, opacity: closed ? 0.55 : 1 }}>
             {row.id}
           </Text>
         );

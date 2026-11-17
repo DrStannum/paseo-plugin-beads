@@ -105,6 +105,14 @@ export const MONO = Platform.select({
 }) as string;
 
 /**
+ * Props for every node drawn in MONO. Paseo web may force its UI font on
+ * every node of the app (`:not([data-pmono])`, when a UI font is set), which
+ * beats an inline fontFamily; the host's own code views opt out with the
+ * data-pmono attribute, and so do ours. Spread it on the Text / TextInput.
+ */
+export const MONO_DOM = (Platform.OS === "web" ? { dataSet: { pmono: "" } } : {}) as object;
+
+/**
  * Font sizes, scaled from the reference's rem values (root 14 px) up a notch
  * to sit with Paseo's own text.
  */

@@ -15,7 +15,7 @@ import type { TreeRow } from "../../../shared/types.ts";
 import { useBeads } from "../../beads.tsx";
 import { Chart, ChartCard, KpiTiles, stepCaption, tipFor, type ChartColors } from "../../charts/index.ts";
 import { useStore } from "../../store.tsx";
-import { FONT, MONO } from "../../theme.ts";
+import { FONT, MONO, MONO_DOM } from "../../theme.ts";
 import { StatusDot, titled } from "../../ui.tsx";
 import { ChartsEmpty, ClosedWarning, DrillHead, Foot, PaceCard, useChartColors } from "./common.tsx";
 import { CutCards } from "./cuts.tsx";
@@ -169,7 +169,7 @@ function WipRow({ item, colors }: { item: WipItem<TreeRow>; colors: ChartColors 
       ]}
     >
       <StatusDot pal={pal} status={item.row.status} />
-      <Text style={{ fontFamily: MONO, fontSize: FONT.id, color: colors.muted }}>{item.row.id}</Text>
+      <Text {...MONO_DOM} style={{ fontFamily: MONO, fontSize: FONT.id, color: colors.muted }}>{item.row.id}</Text>
       <Text numberOfLines={1} style={{ flex: 1, minWidth: 0, fontSize: FONT.rowTitle, color: colors.ink }}>{item.row.title}</Text>
       <Text style={{ fontSize: FONT.stat, color: item.stale ? colors.critical : colors.muted, fontWeight: item.stale ? "600" : "400" }}>
         {t.pplAge(item.ageDays)}

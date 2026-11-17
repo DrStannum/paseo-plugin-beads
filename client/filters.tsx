@@ -21,7 +21,7 @@ import {
 import { useBeads } from "./beads.tsx";
 import { columnLabel, statusLabel, typeLabel } from "./format.ts";
 import { useStore } from "./store.tsx";
-import { FONT, MONO, mix, type Palette } from "./theme.ts";
+import { FONT, MONO, MONO_DOM, mix, type Palette } from "./theme.ts";
 import { Backdrop, Btn, Dropdown, LabelChip, Mark, StatusDot, TypeGlyph } from "./ui.tsx";
 
 /** Which floating panel under the toolbar is open. */
@@ -152,7 +152,7 @@ export function FilterPanel({ options }: { options: FilterOptions }) {
             const on = f.priorities.indexOf(key) >= 0;
             return (
               <Chip key={key} pal={pal} on={on} testID={`beads-f-pri-${key}`} onPress={() => set({ priorities: toggleValue(f.priorities, key) })}>
-                <Text style={{ fontFamily: MONO, fontSize: FONT.mark, color: key <= 1 ? pal.pri(key) : pal.muted, fontWeight: key <= 1 ? "700" : "400" }}>{`P${key}`}</Text>
+                <Text {...MONO_DOM} style={{ fontFamily: MONO, fontSize: FONT.mark, color: key <= 1 ? pal.pri(key) : pal.muted, fontWeight: key <= 1 ? "700" : "400" }}>{`P${key}`}</Text>
                 <ChipText pal={pal} on={on}>{String(n)}</ChipText>
               </Chip>
             );

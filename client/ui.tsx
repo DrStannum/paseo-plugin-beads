@@ -8,7 +8,7 @@ import { Icon } from "@getpaseo/plugin/client/ui";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Platform, Pressable, ScrollView, Text, View, type StyleProp, type TextStyle, type ViewStyle } from "react-native";
 import { typeGlyph } from "../shared/tree.ts";
-import { FONT, MONO, alpha, mix, type Palette } from "./theme.ts";
+import { FONT, MONO, MONO_DOM, alpha, mix, type Palette } from "./theme.ts";
 
 /** What a web host node offers for a tooltip (no DOM lib in this project). */
 interface TitledNode {
@@ -182,7 +182,7 @@ export function Chevron({ pal, open, size = 12, color }: { pal: Palette; open: b
 
 export function Mono({ style, children, numberOfLines }: { style?: StyleProp<TextStyle>; children: ReactNode; numberOfLines?: number }) {
   return (
-    <Text numberOfLines={numberOfLines} style={[{ fontFamily: MONO }, style]}>
+    <Text {...MONO_DOM} numberOfLines={numberOfLines} style={[{ fontFamily: MONO }, style]}>
       {children}
     </Text>
   );

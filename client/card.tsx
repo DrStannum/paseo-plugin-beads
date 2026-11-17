@@ -20,7 +20,7 @@ import { useCard } from "./data.ts";
 import { columnLabel, fmtDate, fmtDateShort, priorityLabel, priorityTitle, statusLabel, stringOf, typeLabel } from "./format.ts";
 import { Markdown } from "./markdown.tsx";
 import { useStore } from "./store.tsx";
-import { FONT, MONO, mix, type Palette } from "./theme.ts";
+import { FONT, MONO, MONO_DOM, mix, type Palette } from "./theme.ts";
 import { Backdrop, Btn, Chevron, LabelChip, Mark, PriIcon, StatusDot, TypeGlyph, titled } from "./ui.tsx";
 
 export interface CardSlots {
@@ -160,7 +160,7 @@ function CopyKey({ id }: { id: string }) {
         backgroundColor: (st as { hovered?: boolean }).hovered ? pal.hover : pal.raised,
       })}
     >
-      <Text style={{ fontFamily: MONO, fontSize: FONT.id + 0.5, color: pal.ink2 }}>{copied ? `${id} · ${t.copied}` : id}</Text>
+      <Text {...MONO_DOM} style={{ fontFamily: MONO, fontSize: FONT.id + 0.5, color: pal.ink2 }}>{copied ? `${id} · ${t.copied}` : id}</Text>
       <Text style={{ fontSize: 10, color: pal.muted }}>⧉</Text>
     </Pressable>
   );
@@ -501,7 +501,7 @@ function RelRow({ node, cols, onOpen, onToggle }: { node: RelEntry; cols: Column
         );
       case "id":
         return (
-          <Text key="i" numberOfLines={1} style={{ width: w, fontFamily: MONO, fontSize: FONT.id, color: pal.muted, opacity: closed ? 0.55 : 1 }}>
+          <Text {...MONO_DOM} key="i" numberOfLines={1} style={{ width: w, fontFamily: MONO, fontSize: FONT.id, color: pal.muted, opacity: closed ? 0.55 : 1 }}>
             {node.id}
           </Text>
         );

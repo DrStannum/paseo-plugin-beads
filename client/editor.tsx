@@ -20,7 +20,7 @@ import {
 import { useBeads } from "./beads.tsx";
 import { priorityLabel, statusLabel, typeLabel } from "./format.ts";
 import { useBeadsSettings } from "./settings.tsx";
-import { FONT, MONO, mix, type Palette } from "./theme.ts";
+import { FONT, MONO, MONO_DOM, mix, type Palette } from "./theme.ts";
 import { Backdrop, Btn, LabelChip, Menu, PriIcon, StatusDot, TypeGlyph, titled, type MenuItem } from "./ui.tsx";
 import { ErrorBox, SaveBtn, inputStyle } from "./write-controls.tsx";
 import { useWrites, type EditorTarget } from "./writes.tsx";
@@ -215,6 +215,7 @@ function EditorModal({ target }: { target: NonNullable<EditorTarget> }) {
       key,
       label,
       <TextInput
+        {...MONO_DOM}
         testID={`beads-ef-${key}`}
         multiline
         value={form[key]}
@@ -420,7 +421,7 @@ function EditorModal({ target }: { target: NonNullable<EditorTarget> }) {
           <ScrollView style={{ flexShrink: 1 }} contentContainerStyle={{ padding: 20, gap: 12 }} keyboardShouldPersistTaps="handled">
             <View onLayout={(e) => setWidth(Math.round(e.nativeEvent.layout.width))} style={{ gap: 12 }}>
               {sub ? (
-                <Text numberOfLines={1} style={{ fontFamily: MONO, fontSize: FONT.control, color: pal.muted, marginTop: -6 }}>
+                <Text {...MONO_DOM} numberOfLines={1} style={{ fontFamily: MONO, fontSize: FONT.control, color: pal.muted, marginTop: -6 }}>
                   {sub}
                 </Text>
               ) : null}

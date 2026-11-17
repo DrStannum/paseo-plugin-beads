@@ -16,6 +16,8 @@ export interface MarkdownProps {
 }
 
 const MONO = Platform.select({ ios: "Menlo", android: "monospace", default: "ui-monospace, SFMono-Regular, Menlo, monospace" });
+/** Paseo web forces its UI font on nodes without data-pmono (see MONO_DOM in theme.ts). */
+const MONO_DOM = (Platform.OS === "web" ? { dataSet: { pmono: "" } } : {}) as object;
 
 /** Only schemes that leave the app safely navigate; relative paths have nowhere to go here. */
 function open(href: string) {
@@ -59,7 +61,7 @@ export function Markdown({ source, theme, isIssueKey, onOpenIssue, linkColor }: 
           );
         case "code":
           return (
-            <Text key={k} style={{ fontFamily: MONO, fontSize: 12, backgroundColor: c.surface2 }}>
+            <Text {...MONO_DOM} key={k} style={{ fontFamily: MONO, fontSize: 12, backgroundColor: c.surface2 }}>
               {n.v}
             </Text>
           );
@@ -97,7 +99,7 @@ export function Markdown({ source, theme, isIssueKey, onOpenIssue, linkColor }: 
       case "pre":
         return (
           <View key={k} style={{ backgroundColor: c.surface1, borderRadius: 6, padding: 8, borderWidth: 1, borderColor: c.border }}>
-            <Text style={[base, { fontFamily: MONO, fontSize: 12 }]}>{b.v}</Text>
+            <Text {...MONO_DOM} style={[base, { fontFamily: MONO, fontSize: 12 }]}>{b.v}</Text>
           </View>
         );
       case "hr":

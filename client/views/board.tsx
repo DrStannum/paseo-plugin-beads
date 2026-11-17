@@ -25,7 +25,7 @@ import { FLASH_MS } from "../data.ts";
 import { priorityTitle, statusLabel, typeLabel } from "../format.ts";
 import type { Strings } from "../i18n/strings.ts";
 import { useStore } from "../store.tsx";
-import { FONT, MONO, mix, type Palette } from "../theme.ts";
+import { FONT, MONO, MONO_DOM, mix, type Palette } from "../theme.ts";
 import { Btn, LabelChip, Mark, PriIcon, StatusDot, TypeGlyph, titled } from "../ui.tsx";
 import { useWrites } from "../writes.tsx";
 
@@ -91,7 +91,7 @@ function CardBody({ row, kids, slot, pal, t, busy, error }: CardProps) {
         <View ref={titled(typeLabel(t, row.issue_type)) as never}>
           <TypeGlyph pal={pal} type={row.issue_type} />
         </View>
-        <Text numberOfLines={1} style={{ flex: 1, fontFamily: MONO, fontSize: FONT.id, color: pal.muted, opacity: closed ? 0.55 : 1 }}>
+        <Text {...MONO_DOM} numberOfLines={1} style={{ flex: 1, fontFamily: MONO, fontSize: FONT.id, color: pal.muted, opacity: closed ? 0.55 : 1 }}>
           {row.id}
         </Text>
         {row.ready ? (
