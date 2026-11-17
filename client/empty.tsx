@@ -8,7 +8,7 @@ import { Text, View } from "react-native";
 import type { Failure } from "../shared/types.ts";
 import { useBeads } from "./beads.tsx";
 import type { Strings } from "./i18n/strings.ts";
-import { FONT } from "./theme.ts";
+import { FONT, MONO, MONO_DOM, mix } from "./theme.ts";
 import { Btn } from "./ui.tsx";
 
 /** Heading and hint for a failure code. */
@@ -38,7 +38,18 @@ export function EmptyState({ kind }: { kind: "loading" | "filtered" | "failure" 
   return (
     <View testID={`beads-empty-${kind}`} style={{ alignSelf: "center", alignItems: "center", maxWidth: 420, padding: 28, gap: 6, marginVertical: 24 }}>
       <Text style={{ color: pal.ink, fontSize: 15, fontWeight: "600", textAlign: "center" }}>{head}</Text>
-      {hint ? <Text style={{ color: pal.muted, fontSize: FONT.md, textAlign: "center", lineHeight: 19 }}>{hint}</Text> : null}
+      {hint ? (
+        <Text style={{ color: pal.muted, fontSize: FONT.md, textAlign: "center", lineHeight: 19 }}>
+          {/* `bd init` in a hint is a command: drawn as code, not with its backticks. */}
+          {hint.split("`").map((part, i) =>
+            i % 2 ? (
+              <Text key={i} {...MONO_DOM} style={{ fontFamily: MONO, color: pal.ink2, backgroundColor: mix(pal.ink, 8, pal.card) }}>{` ${part} `}</Text>
+            ) : (
+              part
+            ),
+          )}
+        </Text>
+      ) : null}
       {kind === "failure" ? (
         <Btn pal={pal} label={t.retryLoad} testID="beads-empty-retry" style={{ marginTop: 10 }} onPress={() => void data.load("manual")} />
       ) : null}
