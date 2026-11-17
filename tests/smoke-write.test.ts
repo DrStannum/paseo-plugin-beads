@@ -223,7 +223,15 @@ describe("write invariant", () => {
     const before = stub.calls().length;
     const res = await call(syncRpc, sync, ws, ctx);
     assert.equal(res.ok, true);
+    // While it runs, the job says it is a sync (the reference's flag almost never did).
+    assert.equal(res.export.running, true);
+    assert.equal(res.export.syncing, true, "beads.sync answers syncing:true");
+    const mid = await call(jobStatusRpc, jobStatus, ws, ctx);
+    assert.equal(mid.export.syncing, mid.export.running, "beads.job-status: syncing for as long as the sync runs");
+    const rev = await call(revisionRpc, revision, ws, ctx);
+    if (rev.ok && rev.export.running) assert.equal(rev.export.syncing, true, "beads.revision: syncing while the sync runs");
     const exp = await waitForExportIdle();
+    assert.equal(exp.syncing, false, "done: not syncing any more");
     assert.equal(exp.lastImport?.error, null);
     const calls = stub.calls().slice(before);
     const imports = calls.filter((c) => c.split(/\s+/).includes("import"));

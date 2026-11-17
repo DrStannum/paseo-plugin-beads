@@ -66,6 +66,8 @@ interface Slot {
   lastDurationMs: number | null;
   runs: number;
   wantImport: boolean;
+  /** The pass in progress is a sync (import, then export), not a plain export. */
+  syncPass: boolean;
   lastImport: LastImport | null;
   supersededFrom: string | null;
   revision: string | null;
@@ -79,7 +81,7 @@ function exportSlot(beadsDir: string): Slot {
   if (!slot) {
     slot = {
       root: "", running: false, dirty: false, lastOkAt: null, lastError: null, lastDurationMs: null,
-      runs: 0, wantImport: false, lastImport: null, supersededFrom: null, revision: null, loop: null,
+      runs: 0, wantImport: false, syncPass: false, lastImport: null, supersededFrom: null, revision: null, loop: null,
     };
     slots.set(beadsDir, slot);
   }
@@ -98,7 +100,11 @@ export function exportStatus(beadsDir: string): ExportStatus {
     supersededFrom: s.supersededFrom,
     revision: s.revision,
     lastImport: s.lastImport,
-    syncing: s.running && s.wantImport,
+    // A sync is running, or one is owed after the pass in progress. The
+    // reference reads only wantImport here, which the loop clears before its
+    // first await, so its syncing is almost never true; this port also
+    // counts the pass that is importing / exporting for a sync.
+    syncing: s.running && (s.syncPass || s.wantImport),
     // "the database has moved on from the file"
     stale: Boolean(s.lastError) || s.running || s.dirty,
   };
@@ -203,6 +209,7 @@ async function runExportLoop(slot: Slot, beadsDir: string): Promise<void> {
       slot.dirty = false;
       const withImport = slot.wantImport;
       slot.wantImport = false;
+      slot.syncPass = withImport;
       if (withImport && !(await runImport(slot, beadsDir))) {
         slot.lastError = slot.lastImport?.error ?? "bd import failed";
         slot.supersededFrom = null;
@@ -239,5 +246,6 @@ async function runExportLoop(slot: Slot, beadsDir: string): Promise<void> {
     } while (slot.dirty);
   } finally {
     slot.running = false;
+    slot.syncPass = false;
   }
 }
