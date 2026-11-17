@@ -153,6 +153,23 @@ try {
           checks.push(`drag ${DRAGGED} open → in_progress: bd show says in_progress`);
           await settle(page);
           if (want('preview-board-dropped-en')) files.push(await shot(page, 'preview-board-dropped-en', { panel }));
+
+          // The open card hears about a board drag: one shared changeStatus.
+          await panel.locator(sel(`beads-bcard-${DRAGGED}`)).click();
+          await panel.locator(sel('beads-card-pane')).waitFor({ timeout: 30_000 });
+          await settle(page);
+          await dragOver(panel, DRAGGED, 'open');
+          await page.mouse.up();
+          const both = await page.waitForFunction(([card, pill]) => {
+            const c = document.querySelector(card);
+            const p = document.querySelector(pill);
+            return Boolean(c && p && /changing/.test(c.textContent ?? '') && /changing/.test(p.textContent ?? ''));
+          }, [sel(`beads-bcard-${DRAGGED}`), `${sel('beads-card-pane')} ${sel('beads-status')}`], { timeout: 10_000, polling: 20 })
+            .then(() => true, () => false);
+          assert.ok(both, '"changing…" shows on the board card and the open card at once');
+          await panel.locator(`${sel('beads-lane-open')} ${sel(`beads-bcard-${DRAGGED}`)}`).waitFor({ timeout: 30_000 });
+          assert.equal(bdStatus(workspace.dir, DRAGGED), 'open', 'dragged back');
+          checks.push('a drag with the card open: "changing…" on both, bd show says open again');
         });
       }
     });

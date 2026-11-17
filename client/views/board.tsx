@@ -8,28 +8,26 @@
  * - web, bd mode: drag a card into another lane. Pointer events on the DOM
  *   node react-native-web renders; past DRAG_SLOP a ghost follows the
  *   pointer, the lane under it lights up, a drop writes the status through
- *   beads.edit, Escape cancels.
+ *   beads.edit (the shared changeStatus of client/writes.tsx), Escape cancels.
  * - native, bd mode: there is no pointer to drag with — a long press opens a
  *   "Move to" menu of the other lanes.
  * - jsonl mode: nothing to write to; the card's tooltip says so.
  */
 
-import { useRpc } from "@getpaseo/plugin/client";
 import { Modal } from "@getpaseo/plugin/client/ui";
-import { useQueryClient } from "@tanstack/react-query";
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import { Platform, Pressable, ScrollView, Text, View } from "react-native";
 import { BOARD_PAGE, CARD_TID, LANE_TID, buildLanes, dropTarget, fromTestId, lanePage, pastSlop, type Lane } from "../../shared/board.ts";
-import { editRpc } from "../../shared/rpc.ts";
 import { compareBy } from "../../shared/tree.ts";
 import type { TreeRow } from "../../shared/types.ts";
 import { useBeads } from "../beads.tsx";
-import { FLASH_MS, cardKey, type CardState } from "../data.ts";
+import { FLASH_MS } from "../data.ts";
 import { priorityTitle, statusLabel, typeLabel } from "../format.ts";
 import type { Strings } from "../i18n/strings.ts";
 import { useStore } from "../store.tsx";
 import { FONT, MONO, mix, type Palette } from "../theme.ts";
 import { Btn, LabelChip, Mark, PriIcon, StatusDot, TypeGlyph, titled } from "../ui.tsx";
+import { useWrites } from "../writes.tsx";
 
 /** Lane width: a phone fits one lane and a hint of the next (reference CSS). */
 const LANE_W = 280;
@@ -45,57 +43,15 @@ interface StatusWrite {
   change(id: string, status: string): void;
 }
 
-function messageOf(err: unknown): string {
-  return err && typeof err === "object" && "message" in err ? String((err as Error).message) : String(err);
-}
-
 /**
- * Port of the reference changeStatus: one write at a time; on success the
- * fresh card goes into the cache and the tree is reloaded ("save"), on
- * failure the card stays in its lane and says why.
+ * The status write is the panel's one changeStatus (client/writes.tsx, the
+ * reference's shared state.statusBusy / statusError): one write at a time,
+ * and "changing…" or a refusal shows on the board card and on the open
+ * issue card together.
  */
 function useStatusWrite(): StatusWrite {
-  const { hostId, workspaceId, data, t } = useBeads();
-  const qc = useQueryClient();
-  const edit = useRpc(editRpc);
-  const [busy, setBusy] = useState<string | null>(null);
-  const [error, setError] = useState<{ id: string; message: string } | null>(null);
-  const inFlight = useRef<string | null>(null);
-  const live = useRef({ edit, data, t, workspaceId, hostId });
-  live.current = { edit, data, t, workspaceId, hostId };
-
-  const change = useCallback(
-    (id: string, status: string) => {
-      if (inFlight.current) return;
-      inFlight.current = id;
-      setBusy(id);
-      setError(null);
-      const { edit: call, data: d, t: s, workspaceId: ws, hostId: host } = live.current;
-      void (async () => {
-        try {
-          let res: any;
-          try {
-            res = await call({ workspaceId: ws, id, fields: { status } });
-          } catch (err) {
-            res = { ok: false, code: "internal", message: messageOf(err) };
-          }
-          if (!res || !res.ok) throw new Error((res && (res.message || res.code)) || "request failed");
-          if (res.issue) {
-            qc.setQueryData<CardState>(cardKey(host, ws, id), { card: res.issue, revision: res.revision, note: null, failed: false });
-          }
-          // A status moves the row, its readiness and its blockers' — the tree has to hear about it.
-          await d.load("save");
-        } catch (err) {
-          setError({ id, message: `${s.stFailed}: ${messageOf(err)}` });
-        } finally {
-          inFlight.current = null;
-          setBusy(null);
-        }
-      })();
-    },
-    [qc],
-  );
-  return { busy, error, change };
+  const { quick, changeStatus } = useWrites();
+  return { busy: quick.statusBusy, error: quick.statusError, change: changeStatus };
 }
 
 // ── a card ────────────────────────────────────────────────────────────
