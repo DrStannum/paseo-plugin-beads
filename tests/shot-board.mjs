@@ -151,6 +151,9 @@ try {
           // The click that ends a drag opens nothing.
           assert.equal(await panel.locator(sel('beads-card-pane')).count(), 0, 'a drop does not select');
           checks.push(`drag ${DRAGGED} open → in_progress: bd show says in_progress`);
+          // The export after the write reports back in the header; wait for it, so the
+          // frame does not depend on whether bd export beat the shot.
+          await panel.locator(sel('beads-export-done')).waitFor({ timeout: 30_000 });
           await settle(page);
           if (want('preview-board-dropped-en')) files.push(await shot(page, 'preview-board-dropped-en', { panel }));
 
