@@ -261,7 +261,11 @@ try {
         await tap(panel, 'beads-status');
         await tap(panel, 'beads-status-in_progress');
         await panel.locator(sel('beads-export-stale')).waitFor({ timeout: 40_000 });
+        // The written card carries today's updated/started dates: show one the fixture dates.
+        await panel.locator(sel('beads-row-demo-b7')).click();
+        await panel.locator(sel('beads-card-title')).getByText(/Booking calendar/).waitFor({ timeout: 30_000 });
         await page.mouse.move(0, 0);
+        await page.waitForTimeout(300);
         files.push(await shot(page, 'preview-export-stale-en', { panel }));
         fs.rmSync(jsonl, { recursive: true, force: true });
       });
@@ -269,13 +273,8 @@ try {
   }
 
   if (want('preview-assignee-menu-en')) {
-    await withWorkspace({ mode: 'bd' }, async (workspace) => {
-      // 45 more people, so the assignee list is longer than any screen.
-      for (let i = 1; i <= 45; i++) {
-        execFileSync('bd', ['create', `Filler ${i}`, '-a', `person-${String(i).padStart(2, '0')}@example.com`, '-C', workspace.dir, '--json'], {
-          stdio: ['ignore', 'ignore', 'pipe'], env: { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', BEADS_ACTOR: 'fixture' },
-        });
-      }
+    // 45 more people, so the assignee list is longer than any screen (fixed ids and dates).
+    await withWorkspace({ mode: 'bd', many: 45, people: true }, async (workspace) => {
       await withPanel({ workspace, theme: 'light', locale: 'en', viewport: WIDE, ready }, async ({ page, panel }) => {
         await panel.locator(sel('beads-row-demo-a1')).waitFor({ timeout: 30_000 });
         await tap(panel, 'beads-filters');

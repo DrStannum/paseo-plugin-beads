@@ -26,6 +26,7 @@
     "shot:writes": "node tests/shot-writes.mjs",
     "shot:board": "node tests/shot-board.mjs",
     "bench": "node tests/bench-large.ts",
+    "preview": "node tests/preview.mjs",
     "fixture": "node tests/fixture/build.mjs"
   },
   "engines": {

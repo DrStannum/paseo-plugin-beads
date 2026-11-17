@@ -26,12 +26,15 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 // @ts-ignore — global install, no types in this project
 import { chromium } from '/usr/local/lib/node_modules/playwright/index.mjs';
-import { buildFixture } from '../fixture/build.mjs';
+import { TEAM_NOW, buildFixture } from '../fixture/build.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 export const TESTS_DIR = path.join(here, '..');
 
 export const DAEMON = '127.0.0.1:6767';
+
+/** The page clock of every frame unless told otherwise: the team fixture's own "now". */
+export const HELD_NOW = TEAM_NOW;
 const ORIGIN = `http://${DAEMON}`;
 export const DIST = '/usr/local/lib/node_modules/@getpaseo/cli/node_modules/@getpaseo/server/dist/server/web-ui';
 
@@ -96,7 +99,7 @@ function dropStaleProjects(/** @type {string} */ dir) {
 }
 
 /**
- * @typedef {{ mode?: 'bd' | 'jsonl', team?: boolean, variant?: 'main' | 'other' | 'bare', many?: number, tag?: string }} FixtureOptions
+ * @typedef {{ mode?: 'bd' | 'jsonl', team?: boolean, variant?: 'main' | 'other' | 'bare', many?: number, rich?: boolean, people?: boolean, tag?: string }} FixtureOptions
  * @typedef {{ dir: string, name: string, projectId: string, workspaceId: string, serverId: string, fixture: ReturnType<typeof buildFixture> }} Workspace
  */
 
@@ -189,7 +192,7 @@ async function waitTextStable(/** @type {any} */ locator, quietMs = 600, timeout
  *   theme?: 'light' | 'dark',
  *   locale?: 'en' | 'ru',
  *   viewport?: { width: number, height: number },
- *   now?: string,
+ *   now?: string | null,
  *   sidebar?: boolean,
  *   ready?: string | RegExp | ((panel: any) => Promise<void>),
  * }} PanelOptions
@@ -201,8 +204,9 @@ async function waitTextStable(/** @type {any} */ locator, quietMs = 600, timeout
  *
  * Pass `workspace` (from withWorkspace) to reuse one registration for several
  * shots; otherwise `fixture` options build and register one just for this call.
- * `now` holds the page clock (Date) at that instant — FIXTURE.teamNow for the
- * dashboards. `sidebar: false` (the default) collapses Paseo's left sidebar so
+ * `now` holds the page clock (Date) at that instant; by default HELD_NOW, so
+ * dates read the same on every run (the fixture's dates are absolute) — the
+ * dashboards need exactly that instant. `now: null` leaves the real clock. `sidebar: false` (the default) collapses Paseo's left sidebar so
  * the panel gets the whole width; shots are cropped to the panel either way.
  *
  * @template T
@@ -212,7 +216,7 @@ async function waitTextStable(/** @type {any} */ locator, quietMs = 600, timeout
  */
 export async function withPanel(opts, fn) {
   if (!opts.workspace) return withWorkspace(opts.fixture ?? {}, (workspace) => withPanel({ ...opts, workspace }, fn));
-  const { workspace, theme = 'dark', locale = 'en', viewport = { width: 1280, height: 800 }, now, sidebar = false, ready } = opts;
+  const { workspace, theme = 'dark', locale = 'en', viewport = { width: 1280, height: 800 }, now = HELD_NOW, sidebar = false, ready } = opts;
   const t0 = Date.now();
   const context = await (await browser()).newContext({ viewport, colorScheme: theme, locale: locale === 'ru' ? 'ru-RU' : 'en-US', timezoneId: 'UTC' });
   try {

@@ -243,6 +243,8 @@ export function removeFixtureDir(/** @type {string} */ dir) {
  *
  * `many: N` adds N plain open tasks (demo-x001…): a board lane long enough
  * to be cut short at BOARD_PAGE — the fixture itself is a readable 16 issues.
+ * `people: true` gives each of the N plain rows its own assignee
+ * (person-01@example.com…): a person list longer than any screen.
  * `rich: true` makes those N rows look like a real tracker's instead: an
  * epic every 25 rows with its children under it, every status and type,
  * labels, kilobytes of description / design / acceptance text and a comment
@@ -251,10 +253,10 @@ export function removeFixtureDir(/** @type {string} */ dir) {
  * `tag` gives a run its own directory, so two shot scripts running at once
  * never build over each other's fixture.
  *
- * @param {{ mode?: 'bd' | 'jsonl', team?: boolean, variant?: 'main' | 'other' | 'bare', many?: number, rich?: boolean, tag?: string }} [opts]
+ * @param {{ mode?: 'bd' | 'jsonl', team?: boolean, variant?: 'main' | 'other' | 'bare', many?: number, rich?: boolean, people?: boolean, tag?: string }} [opts]
  * @returns {{ dir: string, name: string, prefix: string, mode: 'bd' | 'jsonl', rows: any[], cleanup: () => void }}
  */
-export function buildFixture({ mode = 'bd', team = false, variant = 'main', many = 0, rich = false, tag = '' } = {}) {
+export function buildFixture({ mode = 'bd', team = false, variant = 'main', many = 0, rich = false, people = false, tag = '' } = {}) {
   if (variant === 'bare') {
     const owner = path.join(FIXTURE_ROOT, 'bare');
     const dir = path.join(owner, 'demo-empty');
@@ -266,7 +268,7 @@ export function buildFixture({ mode = 'bd', team = false, variant = 'main', many
   }
   const name = variant === 'other' ? 'demo-docs' : 'demo-shop';
   const prefix = variant === 'other' ? FIXTURE.other.prefix : FIXTURE.tree.prefix;
-  const key = [variant, mode, team ? 'team' : null, many ? `many${many}` : null, rich ? 'rich' : null, tag || null].filter(Boolean).join('-');
+  const key = [variant, mode, team ? 'team' : null, many ? `many${many}` : null, rich ? 'rich' : null, people ? 'people' : null, tag || null].filter(Boolean).join('-');
   const owner = path.join(FIXTURE_ROOT, key);
   const dir = path.join(owner, name);
   // A leftover from a crashed run: ours (marker present) is replaced.
@@ -278,6 +280,7 @@ export function buildFixture({ mode = 'bd', team = false, variant = 'main', many
   for (let i = 1; i <= many; i++) rows.push(rich ? richRow(prefix, i) : {
     _type: 'issue', id: `${prefix}-x${String(i).padStart(3, '0')}`, title: `Backlog item ${i}`,
     status: 'open', priority: 3, issue_type: 'task', created_at: NO_CREATED_AT, updated_at: NO_CREATED_AT,
+    ...(people ? { assignee: `person-${String(i).padStart(2, '0')}@example.com` } : {}),
   });
   const jsonl = rows.map((r) => JSON.stringify(r)).join('\n') + '\n';
   const cleanup = () => removeFixtureDir(dir);
