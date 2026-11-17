@@ -568,7 +568,12 @@ function RelRow({ node, cols, onOpen, onToggle }: { node: RelEntry; cols: Column
   );
 }
 
-/** Statuses of a block's issues as a bar, plus the numbers behind it. */
+/**
+ * Statuses of a block's issues as a bar, plus the numbers behind it. The
+ * legend's swatches are the bar's own segment colours: the reference keyed
+ * the bar with status dots, whose open ring and closed fill did not match
+ * the segments, so the legend could not be read as the bar's key.
+ */
 function ProgressBar({ entries, subtree }: { entries: RelEntry[]; subtree: boolean }) {
   const { pal, t } = useBeads();
   const parts = statusBreakdown(entries);
@@ -587,7 +592,7 @@ function ProgressBar({ entries, subtree }: { entries: RelEntry[]; subtree: boole
         <Text style={{ fontSize: FONT.status, color: pal.ink2, fontWeight: "600" }}>{t.relProgress(done, total)}</Text>
         {parts.map((p) => (
           <View key={p.status} style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-            <StatusDot pal={pal} status={p.status} />
+            <View style={{ width: 8, height: 8, borderRadius: 2, flexShrink: 0, backgroundColor: segColor(p.status) }} />
             <Text style={{ fontSize: FONT.status, color: pal.muted }}>
               <Text style={{ color: pal.ink2, fontWeight: "600" }}>{p.n}</Text> {statusLabel(t, p.status)}
             </Text>
