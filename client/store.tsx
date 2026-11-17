@@ -21,6 +21,7 @@ import { useTabState } from "@getpaseo/plugin/client";
 import { createContext, useContext, useEffect, useMemo, useReducer, useRef, type ReactNode } from "react";
 import { z } from "zod";
 import { COLUMNS, COLUMNS_DEFAULT, NO_FILTERS, REL_COLUMNS, REL_COLUMNS_DEFAULT, REL_SORT_DEFAULT, SORTERS, type Filters, type Sort } from "../shared/tree.ts";
+import { CHARTS_LIVE_INIT, CHARTS_TAB_DEFAULT, ChartsTabFields, chartsPersisted, chartsReducer, isChartsAction, type ChartsAction, type ChartsLive } from "./charts-state.ts";
 import { POLL_CHOICES, POLL_DEFAULT_MS } from "./data.ts";
 
 export type View = "tree" | "board" | "charts";
@@ -67,6 +68,8 @@ export const TabStateSchema = z.object({
     .catch({ ...REL_SORT_DEFAULT }),
   relColumns: known(REL_COLUMNS, REL_COLUMNS_DEFAULT),
   commentSort: z.union([z.literal(1), z.literal(-1)]).catch(1),
+  /** The charts view: reading, period, step (client/charts-state.ts). */
+  ...ChartsTabFields,
   pollMs: z.number().refine((n) => POLL_CHOICES.indexOf(n) >= 0).catch(POLL_DEFAULT_MS),
   /** The card pane's dragged width in px; null = the default split (clamped on every layout). */
   cardWidth: z.number().positive().nullable().catch(null),
@@ -86,12 +89,13 @@ export const TAB_DEFAULT: TabState = {
   relSort: { ...REL_SORT_DEFAULT },
   relColumns: REL_COLUMNS_DEFAULT.slice(),
   commentSort: 1,
+  ...CHARTS_TAB_DEFAULT,
   pollMs: POLL_DEFAULT_MS,
   cardWidth: null,
 };
 
 /** The whole client state: what the tab remembers plus what lives only while mounted. */
-export interface UiState extends TabState {
+export interface UiState extends TabState, ChartsLive {
   /** Card navigation (reference back/forward). */
   history: string[];
   historyPos: number;
@@ -131,6 +135,8 @@ export type Action =
   | { type: "relColumns"; columns: string[] }
   | { type: "toggleRelExpanded"; id: string }
   | { type: "commentSort"; dir: 1 | -1 }
+  /** The charts view (client/charts-state.ts). */
+  | ChartsAction
   | { type: "pollMs"; ms: number };
 
 function toggle(list: string[], id: string): string[] {
@@ -144,6 +150,7 @@ function pushHistory(s: UiState, id: string): Pick<UiState, "history" | "history
 }
 
 export function reducer(s: UiState, a: Action): UiState {
+  if (isChartsAction(a)) return chartsReducer(s, a);
   switch (a.type) {
     case "select":
       if (!a.id) return { ...s, selectedId: null };
@@ -226,6 +233,7 @@ function persisted(s: UiState): TabState {
     relSort: s.relSort,
     relColumns: s.relColumns,
     commentSort: s.commentSort,
+    ...chartsPersisted(s),
     pollMs: s.pollMs,
     cardWidth: s.cardWidth,
   };
@@ -246,6 +254,7 @@ export function StoreProvider({ tab, children }: { tab: PluginTab; children: Rea
     history: t.selectedId ? [t.selectedId] : [],
     historyPos: t.selectedId ? 0 : -1,
     relExpanded: [],
+    ...CHARTS_LIVE_INIT,
     reveal: t.selectedId ? { id: t.selectedId, seq: 1 } : null,
     focusId: null,
   }));
