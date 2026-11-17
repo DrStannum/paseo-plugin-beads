@@ -22,6 +22,7 @@
     "write": "node --test tests/write.test.ts",
     "test": "npm run typecheck && node --test tests/*.test.ts",
     "shot": "node tests/shot.mjs",
+    "shot:charts": "node tests/shot-charts.mjs",
     "fixture": "node tests/fixture/build.mjs"
   },
   "engines": {
