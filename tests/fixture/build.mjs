@@ -198,10 +198,15 @@ export function removeFixtureDir(/** @type {string} */ dir) {
  * `variant: 'bare'` is a plain directory with no .beads anywhere above it —
  * the panel's "beads is not set up" empty state.
  *
- * @param {{ mode?: 'bd' | 'jsonl', team?: boolean, variant?: 'main' | 'other' | 'bare' }} [opts]
+ * `many: N` adds N plain open tasks (demo-x001…): a board lane long enough
+ * to be cut short at BOARD_PAGE — the fixture itself is a readable 16 issues.
+ * `tag` gives a run its own directory, so two shot scripts running at once
+ * never build over each other's fixture.
+ *
+ * @param {{ mode?: 'bd' | 'jsonl', team?: boolean, variant?: 'main' | 'other' | 'bare', many?: number, tag?: string }} [opts]
  * @returns {{ dir: string, name: string, prefix: string, mode: 'bd' | 'jsonl', rows: any[], cleanup: () => void }}
  */
-export function buildFixture({ mode = 'bd', team = false, variant = 'main' } = {}) {
+export function buildFixture({ mode = 'bd', team = false, variant = 'main', many = 0, tag = '' } = {}) {
   if (variant === 'bare') {
     const owner = path.join(FIXTURE_ROOT, 'bare');
     const dir = path.join(owner, 'demo-empty');
@@ -213,7 +218,7 @@ export function buildFixture({ mode = 'bd', team = false, variant = 'main' } = {
   }
   const name = variant === 'other' ? 'demo-docs' : 'demo-shop';
   const prefix = variant === 'other' ? FIXTURE.other.prefix : FIXTURE.tree.prefix;
-  const key = [variant, mode, team ? 'team' : null].filter(Boolean).join('-');
+  const key = [variant, mode, team ? 'team' : null, many ? `many${many}` : null, tag || null].filter(Boolean).join('-');
   const owner = path.join(FIXTURE_ROOT, key);
   const dir = path.join(owner, name);
   // A leftover from a crashed run: ours (marker present) is replaced.
@@ -222,6 +227,12 @@ export function buildFixture({ mode = 'bd', team = false, variant = 'main' } = {
   fs.writeFileSync(path.join(owner, MARKER), 'built by tests/fixture/build.mjs; safe to delete\n');
 
   const rows = fixtureRows({ team, variant: variant === 'other' ? 'other' : 'main', mode });
+  for (let i = 1; i <= many; i++) {
+    rows.push({
+      _type: 'issue', id: `${prefix}-x${String(i).padStart(3, '0')}`, title: `Backlog item ${i}`,
+      status: 'open', priority: 3, issue_type: 'task', created_at: NO_CREATED_AT, updated_at: NO_CREATED_AT,
+    });
+  }
   const jsonl = rows.map((r) => JSON.stringify(r)).join('\n') + '\n';
   const cleanup = () => removeFixtureDir(dir);
   try {

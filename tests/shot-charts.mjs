@@ -16,7 +16,6 @@
  *   preview-person-<theme>-<locale>    one person's page, the whole page
  *   preview-authors-<theme>-<locale>   Authors
  *   preview-author-light-en            one author's page
- *   preview-board-placeholder-en       the board's placeholder (pbd-759.8 replaces it)
  *
  * Writes tests/<frame>.png. Look at them before committing.
  * Needs the local Paseo daemon (127.0.0.1:6767) with the beads plugin loaded.
@@ -151,14 +150,6 @@ try {
         await panel.locator('[data-testid="beads-charts-closed-warning"]').waitFor({ timeout: 15_000 });
         await settle(page);
         files.push(await shot(page, 'preview-flow-hidden-en', { panel }));
-      });
-    }
-    if (want('preview-board-placeholder-en')) {
-      await open('dark', 'en', async ({ page, panel }) => {
-        await panel.locator('[data-testid="beads-view-board"]').click();
-        await panel.locator('[data-testid="beads-board"]').waitFor({ timeout: 15_000 });
-        await settle(page);
-        files.push(await shot(page, 'preview-board-placeholder-en', { panel }));
       });
     }
     if (want('preview-charts-barclick-en')) {

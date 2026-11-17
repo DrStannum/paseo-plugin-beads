@@ -96,7 +96,7 @@ function dropStaleProjects(/** @type {string} */ dir) {
 }
 
 /**
- * @typedef {{ mode?: 'bd' | 'jsonl', team?: boolean, variant?: 'main' | 'other' | 'bare' }} FixtureOptions
+ * @typedef {{ mode?: 'bd' | 'jsonl', team?: boolean, variant?: 'main' | 'other' | 'bare', many?: number, tag?: string }} FixtureOptions
  * @typedef {{ dir: string, name: string, projectId: string, workspaceId: string, serverId: string, fixture: ReturnType<typeof buildFixture> }} Workspace
  */
 
