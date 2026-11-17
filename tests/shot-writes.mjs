@@ -352,9 +352,15 @@ try {
         await box.fill('E2E comment from the panel');
         await box.press('Control+Enter');
         await panel.getByText('E2E comment from the panel').first().waitFor({ timeout: 30_000 });
-        await page.waitForTimeout(500);
-        const comments = bdComments(dir, key);
-        const c = comments.find((/** @type {any} */ x) => x.text === 'E2E comment from the panel');
+        // The export the comment started runs alongside; a read of bd racing it
+        // can come back empty, so ask again for a while before calling it lost.
+        let comments = [];
+        let c = null;
+        for (let i = 0; i < 20 && !c; i++) {
+          await page.waitForTimeout(500);
+          try { comments = bdComments(dir, key); } catch { comments = []; }
+          c = comments.find((/** @type {any} */ x) => x.text === 'E2E comment from the panel') ?? null;
+        }
         check('comment landed (bd comments --json)', Boolean(c), comments);
         check('comment author = settings name', c && c.author === NAME, c && c.author);
         // The box empties once the write (and the tree reload behind it) is done.
