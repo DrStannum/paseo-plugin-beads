@@ -8,8 +8,9 @@
  *   columns, the view switch, New issue.
  * - CardSlots (client/card.tsx): sub-issue / edit / pin buttons, the status
  *   menu, the comment box, label → filter.
- * - `ui.view` (client/store.tsx) picks the body; board and charts render in
- *   place of the tree + card pair.
+ * - `ui.view` (client/store.tsx) picks the body: the board takes the tree's
+ *   place (the card pane only shows once an issue is picked), the charts
+ *   take the place of the tree + card pair.
  * - The card pane: a dragged width (client/splitter.tsx, web) clamped by
  *   cardPaneWidth(), else the reference's 55/45 split; a fixed share on native.
  * - Two-card mode (`ui.focusId`): the pinned card takes the tree's place on
@@ -46,6 +47,7 @@ export function BeadsPanel(props: PluginWorkspacePanelProps) {
 }
 
 const HEADER_SLOTS: HeaderSlots = {};
+const NONE = () => false;
 const CARD_SLOTS: CardSlots = {};
 
 function Body({ compactHost }: { compactHost: boolean }) {
@@ -113,6 +115,8 @@ function Body({ compactHost }: { compactHost: boolean }) {
   else if (flat && !flat.nodes.length) empty = <EmptyState kind="filtered" />;
 
   const hasCard = Boolean(ui.selectedId) && Boolean(tree);
+  const board = ui.view === "board" && !focusId;
+  const charts = ui.view === "charts" && !focusId;
   const pane = { borderWidth: 1, borderColor: pal.border, borderRadius: 10, backgroundColor: pal.card, overflow: "hidden" as const };
   const pad = narrow ? 10 : 18;
   // What the tree and the card split between them; the handle takes the gap.
@@ -131,21 +135,24 @@ function Body({ compactHost }: { compactHost: boolean }) {
       <View style={{ flex: 1, flexDirection: "row", gap: narrow ? 14 : 0, padding: pad, paddingTop: 12, minHeight: 0 }}>
         {!tree ? (
           <View style={[pane, { flex: 1 }]}>{empty}</View>
-        ) : ui.view !== "tree" && !ui.focusId ? (
-          // Board and charts take the place of the tree + card pair.
-          <View testID={`beads-view-${ui.view}`} style={[pane, { flex: 1, minWidth: 0 }]}>
-            {ui.view === "charts" ? <ChartsView rows={viewRows} compact={narrow} /> : <BoardView />}
+        ) : charts ? (
+          // The charts take the place of the tree + card pair: they never have a selected issue.
+          <View testID="beads-view-charts" style={[pane, { flex: 1, minWidth: 0 }]}>
+            <ChartsView rows={viewRows} compact={narrow} />
           </View>
         ) : (
           <>
-            <View style={[pane, { flex: 1, minWidth: 0 }]}>
+            <View testID={board ? "beads-view-board" : undefined} style={[pane, { flex: 1, minWidth: 0 }]}>
               {focusId ? (
                 <CardPane key={`focus:${focusId}`} id={focusId} focus compact={narrow} slots={cardSlots} />
+              ) : board ? (
+                <BoardView passes={passes ?? NONE} compact={narrow} />
               ) : (
                 <Tree nodes={flat?.nodes ?? []} empty={empty} />
               )}
             </View>
-            {narrow ? null : (
+            {/* With nothing picked the board takes the whole width (reference .cbd-board-view:not(.cbd-has-card)). */}
+            {narrow || (board && !hasCard) ? null : (
               <>
                 <Splitter
                   pal={pal}
@@ -169,7 +176,7 @@ function Body({ compactHost }: { compactHost: boolean }) {
           </>
         )}
       </View>
-      {narrow && hasCard && (ui.view === "tree" || ui.focusId) ? (
+      {narrow && hasCard && !charts ? (
         <View testID="beads-card-overlay" style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: pal.card, zIndex: 100 }}>
           <CardPane id={ui.selectedId} compact slots={cardSlots} />
         </View>
