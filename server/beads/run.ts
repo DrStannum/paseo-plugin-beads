@@ -20,6 +20,19 @@ import { trackTimer, untrackTimer } from "./timers.ts";
 /** Hard stop for a `bd` call. A hydrated 1200-issue dump takes ~1 s. */
 export const BD_TIMEOUT_MS = 15000;
 
+/**
+ * Hard stop for the one read that grows with the project: the full
+ * `bd list` behind the snapshot. Measured (tests/bench-large.ts, rich
+ * synthetic fixture): 4000 issues / 14.6 MB take bd ~3 s alone and several
+ * times that with four lists at once; a live 3400-issue project took ~10 s
+ * through the daemon under load. The reference stops it at BD_TIMEOUT_MS,
+ * where such a project fails for good ("timeout" is not retried). Here the
+ * handler stops *waiting* at its budget (25 s, under the daemon's 30 s) and
+ * answers `busy`; the load keeps running past it and lands in the cache for
+ * the panel's retry, so the list may take longer than any one RPC.
+ */
+export const BD_LIST_TIMEOUT_MS = 60000;
+
 /** Hard cap on a `bd` call's stdout. The same dump is ~3 MB. */
 export const BD_MAX_STDOUT = 64 * 1024 * 1024;
 

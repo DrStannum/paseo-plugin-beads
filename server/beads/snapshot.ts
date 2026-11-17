@@ -9,7 +9,7 @@ import path from "node:path";
 import type { Comment, Counts, Mode, Stale } from "../../shared/types.ts";
 import { countUp, indexIssues, normalize, readIssuesJsonl, type Issue } from "./issues.ts";
 import { revisionOf } from "./project.ts";
-import { BD_TIMEOUT_MS, findBd, firstLine, looksLikeNoDatabase, runBd, type BdResult } from "./run.ts";
+import { BD_LIST_TIMEOUT_MS, findBd, firstLine, looksLikeNoDatabase, runBd, type BdResult } from "./run.ts";
 import { sleep } from "./timers.ts";
 import { log } from "./log.ts";
 
@@ -153,7 +153,7 @@ function settle(entry: Entry, snapshot: Snapshot, gen: number): Snapshot {
 
 async function listIssues(root: string): Promise<{ listed: BdResult; issues: Issue[]; error: LoadError | null }> {
   // Flag order matters: --no-pager belongs to `list`, not to the root command.
-  const listed = await runBd(root, ["list", "--all", "-n", "0", "--no-pager"]);
+  const listed = await runBd(root, ["list", "--all", "-n", "0", "--no-pager"], { timeoutMs: BD_LIST_TIMEOUT_MS });
   let issues: Issue[] = [];
   let error: LoadError | null = null;
   if (listed.ok) {
@@ -167,7 +167,7 @@ async function listIssues(root: string): Promise<{ listed: BdResult; issues: Iss
   } else if (!findBd()) {
     error = { code: "no_bd", message: "bd was not found on PATH" };
   } else if (listed.timedOut) {
-    error = { code: "timeout", message: `bd timed out after ${BD_TIMEOUT_MS} ms` };
+    error = { code: "timeout", message: `bd timed out after ${BD_LIST_TIMEOUT_MS} ms` };
   } else if (listed.truncated) {
     error = { code: "too_big", message: "bd output exceeded the size limit" };
   }

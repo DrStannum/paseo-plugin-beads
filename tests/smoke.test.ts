@@ -428,6 +428,15 @@ describe("budget and cleanup", () => {
     }
   });
 
+  it("a slow bd list meets the busy path, not its own timeout (tests/bench-large.ts)", async () => {
+    const { handlerTuning } = await import("../server/handlers.ts");
+    const { BD_LIST_TIMEOUT_MS, BD_TIMEOUT_MS } = await import("../server/beads/run.ts");
+    // The list outlives any one RPC: the handler answers busy, the load lands for the retry.
+    assert.ok(BD_LIST_TIMEOUT_MS > handlerTuning.budgetMs, "the list must outlast the handler budget");
+    // Every other read answers inside one RPC, timeout included.
+    assert.ok(BD_TIMEOUT_MS < handlerTuning.budgetMs && handlerTuning.budgetMs < 30000);
+  });
+
   it("cleanup leaves no timer and no bd child behind", async () => {
     const stub = makeStub(DATA);
     stub.config({ listSleepMs: 2000 });

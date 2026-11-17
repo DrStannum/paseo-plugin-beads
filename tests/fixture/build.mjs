@@ -42,6 +42,9 @@ export const NO_CREATED_AT = '2026-01-05T09:00:00Z';
 /** Root of every fixture directory; each build owns one subdirectory. */
 export const FIXTURE_ROOT = path.join(os.tmpdir(), 'paseo-beads-fixture');
 
+/** Rows per `bd import` call (see buildFixture). */
+const IMPORT_CHUNK = 500;
+
 /** Written into each built directory so cleanup only ever removes our own. */
 const MARKER = '.paseo-beads-fixture';
 
@@ -164,6 +167,46 @@ export function fixtureRows({ team = false, variant = 'main', mode = 'bd' } = {}
   });
 }
 
+const RICH_STATUS = ['open', 'open', 'in_progress', 'closed', 'closed', 'closed', 'blocked', 'deferred'];
+const RICH_TYPE = ['task', 'bug', 'feature', 'chore'];
+const RICH_WORDS = 'the panel reads every issue of the project once and keeps the snapshot until the revision moves so a poll costs nothing while a write invalidates it'.split(' ');
+
+/** Invented prose of about `n` characters, the same for the same seed. */
+function prose(/** @type {number} */ seed, /** @type {number} */ n) {
+  let out = '';
+  for (let k = 0; out.length < n; k++) {
+    out += RICH_WORDS[(seed * 7 + k * 13) % RICH_WORDS.length] + ((k + seed) % 17 === 16 ? '.\n\n' : ' ');
+  }
+  return out.trim();
+}
+
+/** One row of a large synthetic tracker (buildFixture `rich`). */
+function richRow(/** @type {string} */ prefix, /** @type {number} */ i) {
+  const id = `${prefix}-x${String(i).padStart(4, '0')}`;
+  const epic = i % 25 === 1;
+  const parent = epic ? null : `${prefix}-x${String(i - ((i - 1) % 25)).padStart(4, '0')}`;
+  const day = (/** @type {number} */ d) => new Date(Date.parse('2026-01-01T09:00:00Z') + d * 3_600_000).toISOString().replace(/\.\d{3}Z$/, 'Z');
+  const status = epic ? 'open' : RICH_STATUS[i % RICH_STATUS.length];
+  /** @type {Record<string, any>} */
+  const row = {
+    _type: 'issue', id, title: `${epic ? 'Epic' : 'Work item'} ${i}: ${prose(i, 50)}`,
+    description: prose(i, 1200), design: prose(i + 1, 900), acceptance_criteria: prose(i + 2, 400), notes: prose(i + 3, 200),
+    status, priority: i % 5, issue_type: epic ? 'epic' : RICH_TYPE[i % RICH_TYPE.length],
+    assignee: `person-${i % 12}@example.com`, owner: `person-${i % 12}@example.com`, created_by: 'fixture',
+    created_at: day(i), updated_at: day(i + 5),
+    labels: [`area:${['ui', 'server', 'docs', 'tests'][i % 4]}`, ...(i % 3 ? [] : ['debt'])],
+  };
+  if (status === 'closed') { row.closed_at = day(i + 9); row.close_reason = 'done'; }
+  if (parent) {
+    row.dependencies = [{ issue_id: id, depends_on_id: parent, type: 'parent-child', created_at: day(i), created_by: 'fixture', metadata: '{}' }];
+  }
+  if (i % 5 === 0) {
+    row.comments = [{ id: `${id}-c1`, issue_id: id, author: 'Sam Okoye', text: prose(i + 4, 300), created_at: day(i + 6) }];
+    row.comment_count = 1;
+  }
+  return row;
+}
+
 /** The environment bd runs in: no user git identity, no prompts, fixed actor. */
 function bdEnv() {
   return {
@@ -175,9 +218,9 @@ function bdEnv() {
   };
 }
 
-/** @param {string} cwd @param {string[]} args */
-function bd(cwd, args) {
-  return execFileSync('bd', args, { cwd, env: bdEnv(), stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8', timeout: 60_000 });
+/** @param {string} cwd @param {string[]} args @param {number} [timeout] */
+function bd(cwd, args, timeout = 60_000) {
+  return execFileSync('bd', args, { cwd, env: bdEnv(), stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8', timeout, maxBuffer: 1 << 28 });
 }
 
 /** Remove a fixture directory, refusing anything that is not one of ours. */
@@ -200,13 +243,18 @@ export function removeFixtureDir(/** @type {string} */ dir) {
  *
  * `many: N` adds N plain open tasks (demo-x001…): a board lane long enough
  * to be cut short at BOARD_PAGE — the fixture itself is a readable 16 issues.
+ * `rich: true` makes those N rows look like a real tracker's instead: an
+ * epic every 25 rows with its children under it, every status and type,
+ * labels, kilobytes of description / design / acceptance text and a comment
+ * on every fifth — the shape behind bd's load time on a large project
+ * (tests/bench-large.mjs). Still invented text, deterministic timestamps.
  * `tag` gives a run its own directory, so two shot scripts running at once
  * never build over each other's fixture.
  *
- * @param {{ mode?: 'bd' | 'jsonl', team?: boolean, variant?: 'main' | 'other' | 'bare', many?: number, tag?: string }} [opts]
+ * @param {{ mode?: 'bd' | 'jsonl', team?: boolean, variant?: 'main' | 'other' | 'bare', many?: number, rich?: boolean, tag?: string }} [opts]
  * @returns {{ dir: string, name: string, prefix: string, mode: 'bd' | 'jsonl', rows: any[], cleanup: () => void }}
  */
-export function buildFixture({ mode = 'bd', team = false, variant = 'main', many = 0, tag = '' } = {}) {
+export function buildFixture({ mode = 'bd', team = false, variant = 'main', many = 0, rich = false, tag = '' } = {}) {
   if (variant === 'bare') {
     const owner = path.join(FIXTURE_ROOT, 'bare');
     const dir = path.join(owner, 'demo-empty');
@@ -218,7 +266,7 @@ export function buildFixture({ mode = 'bd', team = false, variant = 'main', many
   }
   const name = variant === 'other' ? 'demo-docs' : 'demo-shop';
   const prefix = variant === 'other' ? FIXTURE.other.prefix : FIXTURE.tree.prefix;
-  const key = [variant, mode, team ? 'team' : null, many ? `many${many}` : null, tag || null].filter(Boolean).join('-');
+  const key = [variant, mode, team ? 'team' : null, many ? `many${many}` : null, rich ? 'rich' : null, tag || null].filter(Boolean).join('-');
   const owner = path.join(FIXTURE_ROOT, key);
   const dir = path.join(owner, name);
   // A leftover from a crashed run: ours (marker present) is replaced.
@@ -227,12 +275,10 @@ export function buildFixture({ mode = 'bd', team = false, variant = 'main', many
   fs.writeFileSync(path.join(owner, MARKER), 'built by tests/fixture/build.mjs; safe to delete\n');
 
   const rows = fixtureRows({ team, variant: variant === 'other' ? 'other' : 'main', mode });
-  for (let i = 1; i <= many; i++) {
-    rows.push({
-      _type: 'issue', id: `${prefix}-x${String(i).padStart(3, '0')}`, title: `Backlog item ${i}`,
-      status: 'open', priority: 3, issue_type: 'task', created_at: NO_CREATED_AT, updated_at: NO_CREATED_AT,
-    });
-  }
+  for (let i = 1; i <= many; i++) rows.push(rich ? richRow(prefix, i) : {
+    _type: 'issue', id: `${prefix}-x${String(i).padStart(3, '0')}`, title: `Backlog item ${i}`,
+    status: 'open', priority: 3, issue_type: 'task', created_at: NO_CREATED_AT, updated_at: NO_CREATED_AT,
+  });
   const jsonl = rows.map((r) => JSON.stringify(r)).join('\n') + '\n';
   const cleanup = () => removeFixtureDir(dir);
   try {
@@ -242,9 +288,12 @@ export function buildFixture({ mode = 'bd', team = false, variant = 'main', many
     } else {
       bd(dir, ['init', '--non-interactive', '--prefix', prefix, '--skip-hooks', '--skip-agents', '-q']);
       const input = path.join(owner, 'import.jsonl'); // outside the project: not a stray file in it
-      fs.writeFileSync(input, jsonl);
-      bd(dir, ['import', input]);
-      bd(dir, ['export', '-o', path.join(dir, '.beads', 'issues.jsonl')]);
+      // bd import slows down faster than its input grows; a large fixture goes in by IMPORT_CHUNK rows.
+      for (let at = 0; at < rows.length; at += IMPORT_CHUNK) {
+        fs.writeFileSync(input, rows.slice(at, at + IMPORT_CHUNK).map((r) => JSON.stringify(r)).join('\n') + '\n');
+        bd(dir, ['import', input], 300_000);
+      }
+      bd(dir, ['export', '-o', path.join(dir, '.beads', 'issues.jsonl')], 300_000);
       fs.rmSync(input);
     }
   } catch (err) {
