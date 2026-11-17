@@ -480,3 +480,154 @@ export function statusBreakdown(entries: readonly { status: string }[]): { statu
   const order = STATUS_ORDER.filter((s) => by.has(s)).concat(Array.from(by.keys()).filter((s) => STATUS_ORDER.indexOf(s) < 0));
   return order.map((status) => ({ status, n: by.get(status) ?? 0 }));
 }
+
+// ── the filter panel ─────────────────────────────────────────────────
+
+/** "Created within" windows the panel offers; null = any time. One choice, not a multi-select. */
+export const CREATED_WINDOWS: readonly (number | null)[] = [null, 1, 7, 30, 90];
+
+export interface FilterOptions {
+  /** Statuses present, bd's order first, with counts over every row. */
+  statuses: { key: string; n: number }[];
+  /** Types present, most common first. */
+  types: { key: string; n: number }[];
+  /** Priority levels actually used, P0 first. */
+  priorities: { key: number; n: number }[];
+  readiness: { key: "ready" | "blocked"; n: number }[];
+  /** Every label, sorted, with how many issues carry it. */
+  labels: { key: string; n: number }[];
+  /** Assignees, sorted. */
+  people: string[];
+}
+
+/** What the filter panel offers, from the whole list (reference rebuildFilterOptions). */
+export function filterOptions(rows: readonly TreeRow[]): FilterOptions {
+  const byStatus = new Map<string, number>();
+  const byType = new Map<string, number>();
+  const byPri = new Map<number, number>();
+  const byLabel = new Map<string, number>();
+  const people = new Set<string>();
+  let ready = 0;
+  let blocked = 0;
+  for (const row of rows) {
+    byStatus.set(row.status, (byStatus.get(row.status) ?? 0) + 1);
+    const type = row.issue_type || "task";
+    byType.set(type, (byType.get(type) ?? 0) + 1);
+    if (row.priority != null) byPri.set(row.priority, (byPri.get(row.priority) ?? 0) + 1);
+    for (const l of row.labels ?? []) byLabel.set(l, (byLabel.get(l) ?? 0) + 1);
+    if (row.assignee) people.add(row.assignee);
+    const r = readinessOf(row);
+    if (r === "ready") ready++;
+    else if (r === "blocked") blocked++;
+  }
+  return {
+    statuses: STATUS_ORDER.filter((s) => byStatus.has(s)).map((key) => ({ key, n: byStatus.get(key)! })),
+    types: Array.from(byType.entries())
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .map(([key, n]) => ({ key, n })),
+    priorities: Array.from(byPri.keys())
+      .sort((a, b) => a - b)
+      .map((key) => ({ key, n: byPri.get(key)! })),
+    readiness: [
+      { key: "ready", n: ready },
+      { key: "blocked", n: blocked },
+    ],
+    labels: Array.from(byLabel.keys())
+      .sort()
+      .map((key) => ({ key, n: byLabel.get(key)! })),
+    people: Array.from(people).sort(),
+  };
+}
+
+/** Add or remove one value of a multi-select filter. */
+export function toggleValue<T>(list: readonly T[], value: T): T[] {
+  return list.indexOf(value) >= 0 ? list.filter((x) => x !== value) : list.concat([value]);
+}
+
+/** One removable chip under the toolbar. */
+export type ActiveChip =
+  | { kind: "status"; value: string }
+  | { kind: "type"; value: string }
+  | { kind: "priority"; value: number }
+  | { kind: "readiness"; value: "ready" | "blocked" }
+  | { kind: "created"; value: number }
+  | { kind: "label"; value: string }
+  | { kind: "assignee"; value: string };
+
+/** The active filters as chips, in the reference's order (renderActiveChips). */
+export function activeChips(f: Filters): ActiveChip[] {
+  const out: ActiveChip[] = [];
+  for (const value of f.statuses) out.push({ kind: "status", value });
+  for (const value of f.types) out.push({ kind: "type", value });
+  for (const value of f.priorities) out.push({ kind: "priority", value });
+  for (const value of f.readiness) out.push({ kind: "readiness", value });
+  if (f.createdDays != null) out.push({ kind: "created", value: f.createdDays });
+  for (const value of f.labels) out.push({ kind: "label", value });
+  if (f.assignee) out.push({ kind: "assignee", value: f.assignee });
+  return out;
+}
+
+/** The filters without one chip. */
+export function removeChip(f: Filters, chip: ActiveChip): Filters {
+  switch (chip.kind) {
+    case "status":
+      return { ...f, statuses: f.statuses.filter((x) => x !== chip.value) };
+    case "type":
+      return { ...f, types: f.types.filter((x) => x !== chip.value) };
+    case "priority":
+      return { ...f, priorities: f.priorities.filter((x) => x !== chip.value) };
+    case "readiness":
+      return { ...f, readiness: f.readiness.filter((x) => x !== chip.value) };
+    case "created":
+      return { ...f, createdDays: null };
+    case "label":
+      return { ...f, labels: f.labels.filter((x) => x !== chip.value) };
+    case "assignee":
+      return { ...f, assignee: null };
+  }
+}
+
+/** A label that vanished from the project cannot stay in the filter. Same object if nothing changed. */
+export function pruneLabels(f: Filters, present: ReadonlySet<string>): Filters {
+  const keep = f.labels.filter((l) => present.has(l));
+  return keep.length === f.labels.length ? f : { ...f, labels: keep };
+}
+
+/** Server full-text hits, tagged with the query they answer. */
+export interface SearchHits {
+  q: string;
+  ids: ReadonlySet<string>;
+}
+
+/**
+ * The hits that may join the local match: only ones for the query as it is
+ * now. Results of an earlier query would let rows that no longer match flash
+ * by while the next request is in flight (reference bug cbd-pe9).
+ */
+export function hitsFor(hits: SearchHits | null, query: string): ReadonlySet<string> | null {
+  const q = query.trim();
+  return hits && q.length >= SEARCH_MIN && hits.q === q ? hits.ids : null;
+}
+
+/** The server is asked from this many characters on, after SEARCH_DEBOUNCE_MS of quiet. */
+export const SEARCH_MIN = 2;
+export const SEARCH_DEBOUNCE_MS = 220;
+
+// ── the card pane's width ────────────────────────────────────────────
+
+/** Card pane limits (reference CARD_MIN_W / TREE_MIN_W) and the untouched split. */
+export const CARD_MIN_W = 320;
+export const TREE_MIN_W = 340;
+export const CARD_MAX_DEFAULT_W = 640;
+
+/**
+ * The card pane's width out of `shared` px the tree and card split between
+ * them. Untouched (`want` null) it is the reference's 55/45 flex split capped
+ * at 640; a dragged width is clamped every time, so a window that shrank since
+ * cannot leave the tree with no room.
+ */
+export function cardPaneWidth(want: number | null, shared: number): number {
+  const max = Math.max(CARD_MIN_W, shared - TREE_MIN_W);
+  const w = want == null ? Math.min(CARD_MAX_DEFAULT_W, shared * 0.45) : want;
+  return Math.round(Math.min(Math.max(w, CARD_MIN_W), max));
+}
