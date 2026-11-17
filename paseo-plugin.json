@@ -2,7 +2,13 @@
   "id": "beads",
   "name": "Beads",
   "description": "The beads (bd) issue tree of the open workspace: hierarchy, filters, search, a card with every property, editing, a board and charts.",
-  "media": [],
+  "icon": "assets/icon.png",
+  "media": [
+    "assets/media-tree-dark.png",
+    "assets/media-board-dark.png",
+    "assets/media-over-time.png",
+    "assets/media-edit-light.png"
+  ],
   "requirements": {
     "paseo": ">=0.15.4"
   }

@@ -2,9 +2,25 @@
   "name": "paseo-plugin-beads",
   "private": true,
   "version": "0.1.0",
-  "description": "Paseo plugin: the beads (bd) issue tree of the open workspace — browse, create and edit.",
+  "description": "Paseo plugin: the beads (bd) issue tree of the open workspace, with a board and charts; browse, create and edit issues.",
   "author": "DrStannum",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/DrStannum/paseo-plugin-beads.git"
+  },
+  "homepage": "https://github.com/DrStannum/paseo-plugin-beads#readme",
+  "bugs": {
+    "url": "https://github.com/DrStannum/paseo-plugin-beads/issues"
+  },
+  "keywords": [
+    "paseo",
+    "paseo-plugin",
+    "beads",
+    "bd",
+    "issues",
+    "issue-tracker"
+  ],
   "type": "module",
   "files": [
     "paseo-plugin.json",
@@ -14,7 +30,9 @@
     "index.server.ts",
     "client/",
     "server/",
-    "shared/"
+    "shared/",
+    "assets/",
+    "LICENSE"
   ],
   "scripts": {
     "typecheck": "tsc --noEmit",
