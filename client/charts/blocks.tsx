@@ -93,7 +93,10 @@ export function KpiTiles({ tiles, colors }: { tiles: readonly KpiTile[]; colors:
           <Text style={[{
             fontSize: 22, fontWeight: "650" as TextStyle["fontWeight"], letterSpacing: -0.4,
             color: t.tone === "bad" ? colors.critical : t.tone === "good" ? colors.good : colors.ink,
-          }, NUM]}>{t.value}</Text>
+          }, NUM]}>
+            {t.value}
+            {t.share ? <Text style={{ fontSize: 13, fontWeight: "400", letterSpacing: 0, color: colors.muted }}>{`  ${t.share}`}</Text> : null}
+          </Text>
           {t.note ? <Text style={{ fontSize: 11, color: colors.muted, marginTop: 2 }}>{t.note}</Text> : null}
         </View>
       ))}
@@ -200,6 +203,7 @@ export function BreakdownCard({ cut, colors, slots, isActive, onToggle, labelOf,
             return (
               <Pressable
                 key={b.key}
+                testID={`beads-bar-${cut.key}-${b.key}`}
                 onPress={() => onToggle(target, b)}
                 accessibilityRole="button"
                 accessibilityState={{ selected: on }}
@@ -234,12 +238,12 @@ export function CohortGrid({ rows, step, colors }: { rows: readonly CohortRow[];
   const s = useStrings();
   const [hot, setHot] = useState<string | null>(null);
   const head = [s.flowCohStep, s.flowCohRaised, ...COHORT_AGES.map((n) => s.flowCohWithin(n)), s.flowCohSoFar];
-  const W_WHEN = 120;
-  const W_N = 64;
+  const W_WHEN = 150;
+  const W_N = 84;
   const W_CELL = 72;
   const cellText: TextStyle = { fontSize: 12, textAlign: "right" };
   return (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} accessibilityLabel={s.flowCohAria(rows.length)}>
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} accessibilityLabel={s.flowCohAria(rows.length)} contentContainerStyle={{ flexGrow: 1 }}>
       <View style={{ minWidth: 420, flexGrow: 1, gap: 2 }}>
         <View style={{ flexDirection: "row", gap: 2 }}>
           {head.map((h, i) => (

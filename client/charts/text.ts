@@ -106,6 +106,8 @@ export interface KpiTile {
   /** good = green, bad = red, flat/absent = ink — a hint, the note says which way. */
   tone?: "good" | "bad" | "flat";
   note?: string;
+  /** A share of a whole, drawn dimmed beside the figure ("77 %"): it explains the number, not competes with it. */
+  share?: string;
 }
 
 /** The Over-time reading's six headline tiles (renderChartFlow). */
