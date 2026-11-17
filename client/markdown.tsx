@@ -11,6 +11,8 @@ export interface MarkdownProps {
   /** Real ids of the open project: a key spelled out in text becomes a link. */
   isIssueKey?: (id: string) => boolean;
   onOpenIssue?: (id: string) => void;
+  /** Link ink; the host accent by default (it can be a low-contrast hue). */
+  linkColor?: string;
 }
 
 const MONO = Platform.select({ ios: "Menlo", android: "monospace", default: "ui-monospace, SFMono-Regular, Menlo, monospace" });
@@ -29,12 +31,12 @@ function navigable(href: string) {
  * Issue text rendered as markdown. The parser yields nodes, never markup, so
  * every character of the source is drawn as text (invariant 3).
  */
-export function Markdown({ source, theme, isIssueKey, onOpenIssue }: MarkdownProps) {
+export function Markdown({ source, theme, isIssueKey, onOpenIssue, linkColor }: MarkdownProps) {
   const blocks = parseMarkdown(source);
   if (!blocks.length) return null;
   const c = theme.colors;
   const base: TextStyle = { color: c.foreground, fontSize: 13, lineHeight: 19 };
-  const linkStyle: TextStyle = { color: c.accent, textDecorationLine: "underline" };
+  const linkStyle: TextStyle = { color: linkColor ?? c.accent, textDecorationLine: "underline" };
 
   function inline(nodes: Inline[], keyed: boolean, key = ""): ReactNode[] {
     return nodes.map((n, i) => {
@@ -84,7 +86,7 @@ export function Markdown({ source, theme, isIssueKey, onOpenIssue }: MarkdownPro
     });
   }
 
-  function block(b: Block, k: string): ReactNode {
+  function block(b: Block, k: string, depth = 0): ReactNode {
     switch (b.t) {
       case "h": {
         const size = b.level <= 3 ? 16 : b.level === 4 ? 14 : 13;
@@ -126,13 +128,13 @@ export function Markdown({ source, theme, isIssueKey, onOpenIssue }: MarkdownPro
             {b.items.map((item, i) => (
               <View key={i}>
                 <View style={{ flexDirection: "row", gap: 6 }}>
-                  <Text style={[base, { color: c.foregroundMuted, minWidth: 14 }]}>{b.ordered ? `${i + 1}.` : "•"}</Text>
+                  <Text style={[base, { color: c.foregroundMuted, minWidth: 14 }]}>{b.ordered ? `${i + 1}.` : depth ? "◦" : "•"}</Text>
                   <Text style={[base, { flex: 1 }]}>
                     {item.box === null ? null : <Text style={{ color: item.box ? c.statusSuccess : c.foregroundMuted }}>{item.box ? "☑ " : "☐ "}</Text>}
                     {inline(item.c, true)}
                   </Text>
                 </View>
-                {item.sub.length ? <View style={{ paddingLeft: 20 }}>{item.sub.map((x, j) => block(x, `${k}.${i}.${j}`))}</View> : null}
+                {item.sub.length ? <View style={{ paddingLeft: 20 }}>{item.sub.map((x, j) => block(x, `${k}.${i}.${j}`, depth + 1))}</View> : null}
               </View>
             ))}
           </View>
