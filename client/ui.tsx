@@ -5,8 +5,8 @@
  */
 
 import { Icon } from "@getpaseo/plugin/client/ui";
-import { useState, type ReactNode } from "react";
-import { Platform, Pressable, Text, View, type StyleProp, type TextStyle, type ViewStyle } from "react-native";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Platform, Pressable, ScrollView, Text, View, type StyleProp, type TextStyle, type ViewStyle } from "react-native";
 import { typeGlyph } from "../shared/tree.ts";
 import { FONT, MONO, alpha, mix, type Palette } from "./theme.ts";
 
@@ -205,6 +205,132 @@ export function Backdrop({ onClose }: { onClose: () => void }) {
   );
 }
 
+/** What the key handlers use of a DOM keyboard event (no DOM lib in this project). */
+export interface DomKeyEvent {
+  key: string;
+  ctrlKey?: boolean;
+  metaKey?: boolean;
+  shiftKey?: boolean;
+  preventDefault(): void;
+  stopPropagation(): void;
+}
+
+interface DomWindow {
+  addEventListener(type: string, fn: (e: DomKeyEvent) => void, capture?: boolean): void;
+  removeEventListener(type: string, fn: (e: DomKeyEvent) => void, capture?: boolean): void;
+}
+
+/**
+ * While `active`, see every key press first (web only: a capture listener on
+ * the window). Return true from the handler to take the press — it then
+ * stops there, so an Escape that closes a menu inside the edit form does not
+ * also close the form (reference floatMenu).
+ */
+export function useWebKeys(active: boolean, handler: (e: DomKeyEvent) => boolean) {
+  const ref = useRef(handler);
+  ref.current = handler;
+  useEffect(() => {
+    if (!active || Platform.OS !== "web") return;
+    const win = globalThis as unknown as DomWindow;
+    if (typeof win.addEventListener !== "function") return;
+    const fn = (e: DomKeyEvent) => {
+      if (ref.current(e)) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    };
+    win.addEventListener("keydown", fn, true);
+    return () => win.removeEventListener("keydown", fn, true);
+  }, [active]);
+}
+
+export interface MenuItem {
+  key: string;
+  label: string;
+  /** Drawn before the label (a status dot, a type glyph, a priority icon). */
+  icon?: ReactNode;
+  /** The current value: ✓ and accent ink. */
+  selected?: boolean;
+  testID?: string;
+  onPick: () => void;
+}
+
+/** Tallest a floating list grows before it scrolls. */
+export const MENU_MAX_H = 280;
+
+/**
+ * The floating list of a menu (reference .cbd-menu + floatMenu): drawn in
+ * place under its button, at most MENU_MAX_H tall and scrolling beyond that;
+ * on web Escape closes it and the arrows walk it, Enter picks.
+ */
+export function Menu({ pal, items, onClose, top = 34, align = "left", minWidth = 160, testID, empty }: {
+  pal: Palette;
+  items: readonly MenuItem[];
+  onClose: () => void;
+  top?: number;
+  align?: "left" | "right" | "stretch";
+  minWidth?: number;
+  testID?: string;
+  /** Shown when there is nothing to list. */
+  empty?: string;
+}) {
+  const [active, setActive] = useState(-1);
+  useWebKeys(true, (e) => {
+    if (e.key === "Escape") {
+      onClose();
+      return true;
+    }
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      if (!items.length) return true;
+      const step = e.key === "ArrowDown" ? 1 : -1;
+      setActive((a) => (a < 0 ? (step > 0 ? 0 : items.length - 1) : (a + step + items.length) % items.length));
+      return true;
+    }
+    if (e.key === "Enter" && active >= 0 && items[active]) {
+      items[active]!.onPick();
+      return true;
+    }
+    return false;
+  });
+  const place = align === "stretch" ? { left: 0, right: 0 } : align === "left" ? { left: 0 } : { right: 0 };
+  return (
+    <View
+      testID={testID}
+      accessibilityRole="menu"
+      style={{
+        position: "absolute", top, ...place, minWidth: align === "stretch" ? undefined : minWidth, maxHeight: MENU_MAX_H,
+        paddingVertical: 4, borderRadius: 8, borderWidth: 1, borderColor: pal.border, backgroundColor: pal.card, zIndex: 60,
+        shadowColor: "#000", shadowOpacity: 0.18, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 6,
+      }}
+    >
+      <ScrollView style={{ maxHeight: MENU_MAX_H - 10, flexGrow: 0 }} keyboardShouldPersistTaps="handled">
+        {items.length ? (
+          items.map((o, i) => (
+            <Pressable
+              key={o.key}
+              testID={o.testID}
+              accessibilityRole="menuitem"
+              accessibilityState={{ selected: Boolean(o.selected) }}
+              onPress={o.onPick}
+              onHoverIn={() => setActive(i)}
+              style={(st) => ({
+                paddingHorizontal: 10, paddingVertical: 6, marginHorizontal: 4, borderRadius: 6, flexDirection: "row", gap: 8, alignItems: "center",
+                backgroundColor: o.selected ? pal.sel : (st as { hovered?: boolean }).hovered || i === active ? pal.hover : "transparent",
+              })}
+            >
+              {o.icon}
+              <Text numberOfLines={1} style={{ color: o.selected ? pal.ink : pal.ink2, fontSize: FONT.control + 0.5, flex: 1 }}>{o.label}</Text>
+              {o.selected ? <Text style={{ color: pal.link, fontSize: FONT.control }}>✓</Text> : null}
+            </Pressable>
+          ))
+        ) : (
+          <Text style={{ color: pal.muted, fontSize: FONT.control, paddingHorizontal: 12, paddingVertical: 6 }}>{empty ?? ""}</Text>
+        )}
+      </ScrollView>
+    </View>
+  );
+}
+
 export interface MenuOption<V> {
   value: V;
   label: string;
@@ -222,31 +348,23 @@ export function Dropdown<V>({ pal, value, options, onChange, title, testID, alig
       <Btn pal={pal} label={`${current?.label ?? ""} ▾`} title={title} testID={testID} onPress={() => setOpen(!open)} pressed={open} />
       {open ? <Backdrop onClose={() => setOpen(false)} /> : null}
       {open ? (
-        <View
-          style={{
-            position: "absolute", top: 34, ...(align === "left" ? { left: 0 } : { right: 0 }), minWidth: 110, paddingVertical: 4, borderRadius: 8,
-            borderWidth: 1, borderColor: pal.border, backgroundColor: pal.card, zIndex: 50,
-            shadowColor: "#000", shadowOpacity: 0.18, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 6,
-          }}
-        >
-          {options.map((o) => (
-            <Pressable
-              key={String(o.value)}
-              accessibilityRole="menuitem"
-              onPress={() => {
-                setOpen(false);
-                if (o.value !== value) onChange(o.value);
-              }}
-              style={(st) => ({
-                paddingHorizontal: 12, paddingVertical: 6, flexDirection: "row", gap: 8, alignItems: "center",
-                backgroundColor: (st as { hovered?: boolean }).hovered ? pal.hover : "transparent",
-              })}
-            >
-              <Text style={{ color: o.value === value ? pal.link : pal.ink2, fontSize: FONT.control, flex: 1 }}>{o.label}</Text>
-              {o.value === value ? <Text style={{ color: pal.link, fontSize: FONT.control }}>✓</Text> : null}
-            </Pressable>
-          ))}
-        </View>
+        <Menu
+          pal={pal}
+          align={align}
+          minWidth={110}
+          testID={testID ? `${testID}-menu` : undefined}
+          onClose={() => setOpen(false)}
+          items={options.map((o) => ({
+            key: String(o.value),
+            label: o.label,
+            selected: o.value === value,
+            testID: testID ? `${testID}-opt-${String(o.value)}` : undefined,
+            onPick: () => {
+              setOpen(false);
+              if (o.value !== value) onChange(o.value);
+            },
+          }))}
+        />
       ) : null}
     </View>
   );
