@@ -11,6 +11,20 @@ import type { Strings } from "./i18n/strings.ts";
 import { FONT, MONO, MONO_DOM, mix } from "./theme.ts";
 import { Btn } from "./ui.tsx";
 
+/**
+ * A short human phrase for the failure codes a person can act on, or null for
+ * the rest (the "may be out of date" strip then shows the server's message).
+ */
+export function failureHead(t: Strings, code: string | undefined): string | null {
+  if (code === "no_project") return t.emptyNoProject;
+  if (code === "unknown_workspace") return t.emptyNoWorkspace;
+  if (code === "no_beads" || code === "not_found" || code === "not_a_directory") return t.emptyNoBeads;
+  if (code === "not_initialized" || code === "no_data") return t.emptyNotInit;
+  if (code === "no_bd") return t.emptyNoBd;
+  if (code === "timeout") return t.loadStaleTimeout;
+  return null;
+}
+
 /** Heading and hint for a failure code. */
 export function emptyText(t: Strings, empty: Failure): [string, string] {
   const code = empty.code;

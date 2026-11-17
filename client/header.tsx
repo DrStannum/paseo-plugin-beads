@@ -13,6 +13,7 @@ import { Fragment, type ReactNode } from "react";
 import { Text, View } from "react-native";
 import { STATUS_ORDER } from "../shared/charts/types.ts";
 import { useBeads } from "./beads.tsx";
+import { failureHead } from "./empty.tsx";
 import { POLL_CHOICES } from "../shared/settings.ts";
 import { baseName, statusLabel } from "./format.ts";
 import { usePollMs } from "./settings.tsx";
@@ -150,11 +151,14 @@ export function StaleBar() {
   const issue = data.state.loadIssue;
   if (!issue || !data.state.tree) return null;
   const why = issue.kind === "backend" ? t.loadStaleBackend : t.loadStaleFailed;
-  const detail = issue.message || issue.code || "";
+  // Known codes read as a phrase in the panel's language; the raw code and
+  // the server's message stay in the tooltip for whoever needs them.
+  const raw = [issue.code, issue.message].filter(Boolean).join(": ");
+  const detail = failureHead(t, issue.code) ?? (issue.message || issue.code || "");
   return (
     <View
       testID="beads-stalebar"
-      ref={titled(detail ? `${t.loadStaleTip}\n\n${detail}` : t.loadStaleTip) as never}
+      ref={titled(raw ? `${t.loadStaleTip}\n\n${raw}` : t.loadStaleTip) as never}
       style={{
         flexDirection: "row", alignItems: "center", gap: 8, marginTop: 4, paddingVertical: 3, paddingLeft: 10, paddingRight: 4,
         borderRadius: 8, borderWidth: 1, borderColor: mix(pal.warning, 40, pal.border), backgroundColor: mix(pal.warning, 12, pal.card),
