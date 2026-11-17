@@ -25,9 +25,10 @@
  *   preview-settings-<theme>-<locale>     the plugin's page in Paseo's Settings
  *   preview-assignee-menu-en              45 assignees: the filter's list scrolls (and Escape closes it)
  *
- * The settings are the host's own (shared by every client), so the frames
- * that need a name set it through the settings page and put back what was
- * there before when they are done.
+ * The settings are the host's own (shared by every client): the harness pins
+ * them to the defaults for the run and puts the previous file back on exit
+ * (pinSettings in lib/paseo-web.mjs); the frames that need a name set it
+ * through the settings page.
  */
 
 import { execFileSync } from 'node:child_process';
@@ -43,7 +44,6 @@ const want = (/** @type {string} */ name) => !e2eOnly && (!only || name.includes
 
 const WIDE = { width: 1440, height: 900 };
 const NAME = 'Sam Okoye';
-const SETTINGS_FILE_DIR = path.join(process.env.PASEO_HOME ?? path.join(process.env.HOME ?? '/root', '.paseo'), 'plugin-settings', 'beads');
 
 const ready = /** @param {any} panel */ (panel) => panel.locator('[data-testid="beads-panel"]').waitFor({ timeout: 30_000 });
 const tap = (/** @type {any} */ panel, /** @type {string} */ id) => panel.locator(`[data-testid="${id}"]`).first().click();
@@ -94,15 +94,6 @@ function bdComments(/** @type {string} */ dir, /** @type {string} */ id) {
   return JSON.parse(out || '[]') ?? [];
 }
 
-/** Remember the host's beads settings file(s) and restore them afterwards. */
-function snapshotSettings() {
-  /** @type {Map<string, Buffer>} */
-  const saved = new Map();
-  const existed = fs.existsSync(SETTINGS_FILE_DIR);
-  if (existed) for (const f of fs.readdirSync(SETTINGS_FILE_DIR)) saved.set(f, fs.readFileSync(path.join(SETTINGS_FILE_DIR, f)));
-  return { existed, saved };
-}
-
 /** Open the settings page from the panel's gear and set (or clear) the name there. */
 async function setName(/** @type {any} */ page, /** @type {any} */ panel, /** @type {string} */ name) {
   await tap(panel, 'beads-settings');
@@ -119,7 +110,6 @@ const t0 = Date.now();
 /** @type {string[]} */
 const files = [];
 const results = /** @type {string[]} */ ([]);
-const settingsBefore = snapshotSettings();
 try {
   await withWorkspace({ mode: 'bd' }, async (workspace) => {
     // ── status menu ──
@@ -380,14 +370,8 @@ try {
     });
   }
 } finally {
+  // The host's settings come back when the process exits (pinSettings in lib/paseo-web.mjs).
   await closeBrowser();
-  // Put the host's settings back exactly as they were.
-  const now = fs.existsSync(SETTINGS_FILE_DIR) ? fs.readdirSync(SETTINGS_FILE_DIR) : [];
-  if (settingsBefore.existed) {
-    for (const [f, buf] of settingsBefore.saved) fs.writeFileSync(path.join(SETTINGS_FILE_DIR, f), buf);
-  } else if (now.length) {
-    console.error(`[shot-writes] settings dir was created by the run: ${SETTINGS_FILE_DIR} (${now.join(', ')})`);
-  }
 }
 console.log(`${files.length} screenshot(s) in ${((Date.now() - t0) / 1000).toFixed(1)} s`);
 for (const f of files) console.log(`  ${f}`);

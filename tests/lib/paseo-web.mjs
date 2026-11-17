@@ -26,6 +26,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 // @ts-ignore — global install, no types in this project
 import { chromium } from '/usr/local/lib/node_modules/playwright/index.mjs';
+import { SETTINGS_DEFAULT } from '../../shared/settings.ts';
 import { TEAM_NOW, buildFixture } from '../fixture/build.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -78,6 +79,62 @@ function deferCleanup(/** @type {() => void} */ fn) {
 }
 
 // ---------------------------------------------------------------------------
+// The plugin's host settings, pinned for the run
+//
+// The poll interval shows in every frame's header and the reader's name on
+// the settings page, and both live in the host's settings file, shared with
+// the user's real panels. For the run the file holds the defaults; after it,
+// the exact previous bytes come back (or the file goes, if there was none).
+// The daemon reads the file on every settings RPC and every page of a run is
+// opened after the pin, so no client holds a stale copy. Only this plugin's
+// own file is touched. A copy of the original sits in the temp directory
+// until the restore, so a run killed with SIGKILL is undone by the next one.
+
+const SETTINGS_DIR = path.join(process.env.PASEO_HOME ?? path.join(process.env.HOME ?? '/root', '.paseo'), 'plugin-settings', 'beads');
+export const SETTINGS_FILE = path.join(SETTINGS_DIR, 'beads.json');
+/** What the frames are drawn with: the plugin's defaults, in the daemon's file format. */
+const PINNED_SETTINGS = JSON.stringify({ version: 1, values: SETTINGS_DEFAULT });
+const SETTINGS_BACKUP = path.join(process.env.TMPDIR ?? '/tmp', 'paseo-beads-preview-settings.backup.json');
+
+let settingsPinned = false;
+
+/** Pin the beads settings file to the defaults until this process exits. Idempotent. */
+export function pinSettings() {
+  if (settingsPinned) return;
+  settingsPinned = true;
+  /** @type {{ existed: boolean, dirExisted: boolean, mode: number, b64: string }} */
+  let saved;
+  if (fs.existsSync(SETTINGS_BACKUP)) {
+    // A run before this one died before restoring: its copy is the original.
+    saved = JSON.parse(fs.readFileSync(SETTINGS_BACKUP, 'utf8'));
+    log('restoring the settings a killed run left pinned');
+  } else {
+    const existed = fs.existsSync(SETTINGS_FILE);
+    saved = {
+      existed,
+      dirExisted: fs.existsSync(SETTINGS_DIR),
+      mode: existed ? fs.statSync(SETTINGS_FILE).mode & 0o777 : 0o600,
+      b64: existed ? fs.readFileSync(SETTINGS_FILE).toString('base64') : '',
+    };
+    fs.writeFileSync(SETTINGS_BACKUP, JSON.stringify(saved), { mode: 0o600 });
+  }
+  const restore = () => {
+    if (saved.existed) {
+      fs.writeFileSync(SETTINGS_FILE, Buffer.from(saved.b64, 'base64'), { mode: saved.mode });
+      fs.chmodSync(SETTINGS_FILE, saved.mode);
+    } else {
+      fs.rmSync(SETTINGS_FILE, { force: true });
+      if (!saved.dirExisted) { try { fs.rmdirSync(SETTINGS_DIR); } catch { /* not empty or gone */ } }
+    }
+    fs.rmSync(SETTINGS_BACKUP, { force: true });
+  };
+  const undo = deferCleanup(restore);
+  process.once('exit', undo);
+  fs.mkdirSync(SETTINGS_DIR, { recursive: true, mode: 0o700 });
+  fs.writeFileSync(SETTINGS_FILE, PINNED_SETTINGS, { mode: 0o600 });
+}
+
+// ---------------------------------------------------------------------------
 // Paseo registration
 
 /** @param {string[]} args */
@@ -114,6 +171,7 @@ function dropStaleProjects(/** @type {string} */ dir) {
  */
 export async function withWorkspace(opts, fn) {
   const t0 = Date.now();
+  pinSettings();
   const fixture = buildFixture(opts);
   const removeDir = deferCleanup(() => fixture.cleanup());
   /** @type {string | null} */
