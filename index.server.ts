@@ -1,12 +1,25 @@
 import type { PluginServerContext } from "@getpaseo/plugin/server";
-import { pingRpc } from "./shared/rpc.ts";
-import { workspaceDirectory } from "./server/workspaces.ts";
+import {
+  commentRpc, createRpc, editRpc, exportRpc, healthRpc, issueRpc, jobStatusRpc,
+  pingRpc, revisionRpc, searchRpc, syncRpc, treeRpc,
+} from "./shared/rpc.ts";
+import {
+  comment, create, edit, exportNow, health, issue, jobStatus, ping, revision, search, sync, tree,
+} from "./server/handlers.ts";
+import { shutdown } from "./server/lifecycle.ts";
 
 export default function contribute(server: PluginServerContext) {
-  server.handle(pingRpc, async ({ workspaceId }, ctx) => {
-    const directory = await workspaceDirectory(ctx, workspaceId);
-    if (!directory) return { ok: false as const, code: "unknown-workspace" };
-    return { ok: true as const, directory, bd: null };
-  });
-  return () => {};
+  server.handle(pingRpc, ping);
+  server.handle(healthRpc, health);
+  server.handle(revisionRpc, revision);
+  server.handle(treeRpc, tree);
+  server.handle(issueRpc, issue);
+  server.handle(searchRpc, search);
+  server.handle(editRpc, edit);
+  server.handle(createRpc, create);
+  server.handle(commentRpc, comment);
+  server.handle(exportRpc, exportNow);
+  server.handle(syncRpc, sync);
+  server.handle(jobStatusRpc, jobStatus);
+  return shutdown;
 }
