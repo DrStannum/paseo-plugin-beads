@@ -68,6 +68,8 @@ export const TabStateSchema = z.object({
   relColumns: known(REL_COLUMNS, REL_COLUMNS_DEFAULT),
   commentSort: z.union([z.literal(1), z.literal(-1)]).catch(1),
   pollMs: z.number().refine((n) => POLL_CHOICES.indexOf(n) >= 0).catch(POLL_DEFAULT_MS),
+  /** The card pane's dragged width in px; null = the default split (clamped on every layout). */
+  cardWidth: z.number().positive().nullable().catch(null),
 });
 export type TabState = z.infer<typeof TabStateSchema>;
 
@@ -85,6 +87,7 @@ export const TAB_DEFAULT: TabState = {
   relColumns: REL_COLUMNS_DEFAULT.slice(),
   commentSort: 1,
   pollMs: POLL_DEFAULT_MS,
+  cardWidth: null,
 };
 
 /** The whole client state: what the tab remembers plus what lives only while mounted. */
@@ -96,6 +99,8 @@ export interface UiState extends TabState {
   relExpanded: string[];
   /** Bumped when an issue should be scrolled into view in the tree. */
   reveal: { id: string; seq: number } | null;
+  /** Two-card mode: the card pinned in the left pane (reference focusId); not remembered. */
+  focusId: string | null;
 }
 
 export type Action =
@@ -112,6 +117,15 @@ export type Action =
   | { type: "view"; view: View }
   | { type: "filters"; filters: Filters }
   | { type: "query"; query: string }
+  /** "Reset all filters": the filters and the search box. */
+  | { type: "resetFilters" }
+  | { type: "cardWidth"; width: number | null }
+  /** Two-card mode: move the card to the left pane, clear the right one. */
+  | { type: "pin"; id: string }
+  /** The pinned card goes back to the right, the tree to the left. */
+  | { type: "unpin" }
+  /** Close both cards. */
+  | { type: "closeAll" }
   | { type: "toggleSection"; key: string }
   | { type: "relSort"; sort: Sort }
   | { type: "relColumns"; columns: string[] }
@@ -170,6 +184,17 @@ export function reducer(s: UiState, a: Action): UiState {
       return { ...s, filters: a.filters };
     case "query":
       return { ...s, query: a.query };
+    case "resetFilters":
+      return { ...s, filters: { ...NO_FILTERS }, query: "" };
+    case "cardWidth":
+      return { ...s, cardWidth: a.width == null ? null : Math.round(a.width) };
+    case "pin":
+      return { ...s, focusId: a.id, selectedId: null };
+    case "unpin":
+      if (!s.focusId) return s;
+      return { ...s, focusId: null, selectedId: s.focusId, ...pushHistory(s, s.focusId), reveal: { id: s.focusId, seq: (s.reveal?.seq ?? 0) + 1 } };
+    case "closeAll":
+      return { ...s, focusId: null, selectedId: null };
     case "toggleSection":
       return { ...s, collapsedSections: toggle(s.collapsedSections, a.key) };
     case "relSort":
@@ -202,6 +227,7 @@ function persisted(s: UiState): TabState {
     relColumns: s.relColumns,
     commentSort: s.commentSort,
     pollMs: s.pollMs,
+    cardWidth: s.cardWidth,
   };
 }
 
@@ -221,6 +247,7 @@ export function StoreProvider({ tab, children }: { tab: PluginTab; children: Rea
     historyPos: t.selectedId ? 0 : -1,
     relExpanded: [],
     reveal: t.selectedId ? { id: t.selectedId, seq: 1 } : null,
+    focusId: null,
   }));
   const last = useRef<string>("");
   const p = persisted(ui);

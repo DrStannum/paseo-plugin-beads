@@ -188,6 +188,23 @@ export function Mono({ style, children, numberOfLines }: { style?: StyleProp<Tex
   );
 }
 
+/**
+ * Closes a floating menu on a click anywhere else (reference: the document
+ * click handler of floatMenu / labelPicker). Web only — a fixed, transparent
+ * layer under the menu; render it right before the menu, inside the same
+ * raised container. Native has no stray pointer to catch.
+ */
+export function Backdrop({ onClose }: { onClose: () => void }) {
+  if (Platform.OS !== "web") return null;
+  return (
+    <Pressable
+      accessible={false}
+      onPress={onClose}
+      style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, cursor: "default" } as object}
+    />
+  );
+}
+
 export interface MenuOption<V> {
   value: V;
   label: string;
@@ -197,16 +214,17 @@ export interface MenuOption<V> {
  * A button that opens a small list under itself (the reference's iconSelect /
  * floatMenu). Drawn in place with a high zIndex — the panel has no popover API.
  */
-export function Dropdown<V>({ pal, value, options, onChange, title, testID }: { pal: Palette; value: V; options: readonly MenuOption<V>[]; onChange: (v: V) => void; title?: string; testID?: string }) {
+export function Dropdown<V>({ pal, value, options, onChange, title, testID, align = "right" }: { pal: Palette; value: V; options: readonly MenuOption<V>[]; onChange: (v: V) => void; title?: string; testID?: string; align?: "left" | "right" }) {
   const [open, setOpen] = useState(false);
   const current = options.find((o) => o.value === value);
   return (
     <View style={{ position: "relative", zIndex: open ? 50 : 1 }}>
       <Btn pal={pal} label={`${current?.label ?? ""} ▾`} title={title} testID={testID} onPress={() => setOpen(!open)} pressed={open} />
+      {open ? <Backdrop onClose={() => setOpen(false)} /> : null}
       {open ? (
         <View
           style={{
-            position: "absolute", top: 34, right: 0, minWidth: 110, paddingVertical: 4, borderRadius: 8,
+            position: "absolute", top: 34, ...(align === "left" ? { left: 0 } : { right: 0 }), minWidth: 110, paddingVertical: 4, borderRadius: 8,
             borderWidth: 1, borderColor: pal.border, backgroundColor: pal.card, zIndex: 50,
             shadowColor: "#000", shadowOpacity: 0.18, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 6,
           }}

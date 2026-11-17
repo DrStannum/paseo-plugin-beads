@@ -6,7 +6,7 @@
 
 import { createContext, useCallback, useContext, useMemo, type ReactNode } from "react";
 import { ancestorsOf, buildIndex, type TreeIndex } from "../shared/tree.ts";
-import { useBeadsTree, type BeadsData } from "./data.ts";
+import { useBeadsTree, useSearch, type BeadsData } from "./data.ts";
 import { useStrings } from "./i18n/messages.ts";
 import type { Strings } from "./i18n/strings.ts";
 import { usePollMs, useStore } from "./store.tsx";
@@ -21,9 +21,15 @@ export interface Beads {
   data: BeadsData;
   /** The tree as an index (null until a tree loaded). */
   index: TreeIndex | null;
+  /** The server's full-text hits for the current query (null: none, or not for this query yet). */
+  search: { ids: ReadonlySet<string> | null; searching: boolean };
   /** Select an issue from the tree (no reveal). */
   select(id: string): void;
-  /** Open an issue from anywhere (a link in a card): reveal it in the tree and select it. */
+  /**
+   * Open an issue from anywhere (a link in a card): reveal it in the tree and
+   * select it. In two-card mode there is no tree to reveal in, so it only
+   * opens in the right pane.
+   */
   openIssue(id: string): void;
   isIssueKey(id: string): boolean;
 }
@@ -31,27 +37,34 @@ export interface Beads {
 const BeadsContext = createContext<Beads | null>(null);
 
 export function BeadsProvider({ hostId, workspaceId, theme, children }: { hostId: string; workspaceId: string; theme: HostTheme; children: ReactNode }) {
-  const { dispatch } = useStore();
+  const { ui, dispatch } = useStore();
   const [pollMs] = usePollMs();
   const t = useStrings();
   const pal = paletteOf(theme);
   const data = useBeadsTree(hostId, workspaceId, pollMs);
   const rows = data.state.tree?.issues ?? null;
   const index = useMemo(() => (rows ? buildIndex(rows) : null), [rows]);
+  const found = useSearch(workspaceId, ui.query, data.state.revision);
+  const search = useMemo(() => ({ ids: found.ids, searching: found.searching }), [found.ids, found.searching]);
+  const focused = Boolean(ui.focusId);
 
   const select = useCallback((id: string) => dispatch({ type: "select", id }), [dispatch]);
   const openIssue = useCallback(
     (id: string) => {
+      if (focused) {
+        dispatch({ type: "select", id });
+        return;
+      }
       const row = index?.byId.get(id);
       dispatch({ type: "reveal", id, ancestors: index ? ancestorsOf(index, id) : [], closed: row?.status === "closed" });
     },
-    [dispatch, index],
+    [dispatch, index, focused],
   );
   const isIssueKey = useCallback((id: string) => Boolean(index?.byId.has(id)), [index]);
 
   const value = useMemo<Beads>(
-    () => ({ hostId, workspaceId, theme, pal, t, data, index, select, openIssue, isIssueKey }),
-    [hostId, workspaceId, theme, pal, t, data, index, select, openIssue, isIssueKey],
+    () => ({ hostId, workspaceId, theme, pal, t, data, index, search, select, openIssue, isIssueKey }),
+    [hostId, workspaceId, theme, pal, t, data, index, search, select, openIssue, isIssueKey],
   );
   return <BeadsContext.Provider value={value}>{children}</BeadsContext.Provider>;
 }

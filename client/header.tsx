@@ -81,9 +81,10 @@ export function Header({ shown, slots, onExpandAll, onCollapseAll, compact }: { 
           {slots.settings}
         </View>
       </View>
-      <StatLine shown={shown} />
+      {/* A pinned card (two-card mode) takes the list's place, and its controls step aside with it. */}
+      {ui.focusId ? null : <StatLine shown={shown} />}
       <StaleBar />
-      {hasRows && ui.view === "tree" ? (
+      {hasRows && ui.view === "tree" && !ui.focusId ? (
         <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginTop: 4, flexWrap: "wrap", zIndex: 5 }}>
           {slots.toolbarStart}
           <View style={{ flex: 1 }} />
@@ -106,7 +107,7 @@ export function Header({ shown, slots, onExpandAll, onCollapseAll, compact }: { 
 
 /** Counts: total, per status, ready, with blockers, "x of y shown", warnings (reference renderStat). */
 export function StatLine({ shown }: { shown: number | null }) {
-  const { pal, t, data } = useBeads();
+  const { pal, t, data, search } = useBeads();
   const tree = data.state.tree;
   if (!tree) return null;
   const c = tree.counts;
@@ -122,6 +123,7 @@ export function StatLine({ shown }: { shown: number | null }) {
       {item("ready", c.ready, t.cReady, t.readyTip)}
       {c.blocked ? item("blocked", c.blocked, t.cBlocked) : null}
       {shown != null && shown !== c.total ? <Text style={{ color: pal.muted, fontSize: FONT.stat }}>{t.shown(shown, c.total)}</Text> : null}
+      {search.searching ? <Text testID="beads-searching" style={{ color: pal.muted, fontSize: FONT.stat }}>{t.searching}</Text> : null}
       {tree.warnings.map((w, i) => (
         <Text key={`w${i}`} ref={titled(w) as never} numberOfLines={1} style={{ color: pal.warning, fontSize: FONT.stat }}>
           {`⚠ ${w}`}

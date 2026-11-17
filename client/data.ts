@@ -26,9 +26,10 @@
 
 import { useRpc } from "@getpaseo/plugin/client";
 import { useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppState } from "react-native";
-import { issueRpc, revisionRpc, treeRpc } from "../shared/rpc.ts";
+import { issueRpc, revisionRpc, searchRpc, treeRpc } from "../shared/rpc.ts";
+import { SEARCH_DEBOUNCE_MS, SEARCH_MIN, hitsFor, type SearchHits } from "../shared/tree.ts";
 import type { ExportStatus } from "../shared/types.ts";
 import {
   BUSY_RETRY_MS, CACHE_PROJECTS, CARD_GC_MS, EMPTY, POLL_BACKOFF_MAX_MS, SOFT, TREE_GC_MS,
@@ -251,4 +252,49 @@ export function useCard(hostId: string, workspaceId: string, id: string | null, 
   }, [id, data, fetching, treeRevision, refetch]);
   const reload = useCallback(() => void refetch(), [refetch]);
   return { data: id ? data ?? null : null, loading: Boolean(id) && !data, reload };
+}
+
+// ── full-text search ──────────────────────────────────────────────────
+
+/**
+ * The server's full-text answer for the quick search (reference
+ * scheduleSearch): asked from SEARCH_MIN characters on, after
+ * SEARCH_DEBOUNCE_MS of quiet, and again when the tree's revision moves.
+ * Hits count only for the query they answer (hitsFor), so the previous
+ * query's rows never flash by while the next one is in flight.
+ */
+export function useSearch(workspaceId: string, query: string, revision: string | null): { ids: ReadonlySet<string> | null; searching: boolean } {
+  const searchCall = useRpc(searchRpc);
+  const callRef = useRef(searchCall);
+  callRef.current = searchCall;
+  const [hits, setHits] = useState<SearchHits | null>(null);
+  const [pending, setPending] = useState<string | null>(null);
+  const q = query.trim();
+  useEffect(() => {
+    if (q.length < SEARCH_MIN) {
+      setPending(null);
+      return;
+    }
+    let live = true;
+    setPending(q);
+    const timer = setTimeout(() => {
+      callRef.current({ workspaceId, q }).then(
+        (res: any) => {
+          if (!live) return;
+          setHits(res && res.ok ? { q, ids: new Set<string>(res.ids) } : null);
+          setPending(null);
+        },
+        () => {
+          if (!live) return;
+          setHits(null);
+          setPending(null);
+        },
+      );
+    }, SEARCH_DEBOUNCE_MS);
+    return () => {
+      live = false;
+      clearTimeout(timer);
+    };
+  }, [workspaceId, q, revision]);
+  return { ids: hitsFor(hits, q), searching: pending === q && q.length >= SEARCH_MIN };
 }

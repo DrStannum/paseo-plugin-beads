@@ -9,10 +9,10 @@
  * `commentBox` (pbd-125.3), `onLabelPress` (label → filter, pbd-759.4).
  */
 
-import { copyText, ScrollView } from "@getpaseo/plugin/client/ui";
+import { copyText, Icon, ScrollView } from "@getpaseo/plugin/client/ui";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Pressable, Text, View } from "react-native";
-import { REL_COLUMNS, nextSort, relChildTree, relFlat, statusBreakdown, type ColumnDef, type RelEntry, type RelItem, type RelList } from "../shared/tree.ts";
+import { REL_COLUMNS, REL_COLUMNS_DEFAULT, nextSort, toggleValue, relChildTree, relFlat, statusBreakdown, type ColumnDef, type RelEntry, type RelItem, type RelList } from "../shared/tree.ts";
 import type { Card } from "../shared/types.ts";
 import { useBeads } from "./beads.tsx";
 import { useCard } from "./data.ts";
@@ -20,7 +20,7 @@ import { columnLabel, fmtDate, fmtDateShort, priorityLabel, priorityTitle, statu
 import { Markdown } from "./markdown.tsx";
 import { useStore } from "./store.tsx";
 import { FONT, MONO, mix, type Palette } from "./theme.ts";
-import { Btn, Chevron, LabelChip, Mark, PriIcon, StatusDot, TypeGlyph, titled } from "./ui.tsx";
+import { Backdrop, Btn, Chevron, LabelChip, Mark, PriIcon, StatusDot, TypeGlyph, titled } from "./ui.tsx";
 
 export interface CardSlots {
   /** Buttons between the history arrows and Close (new sub-issue, edit, pin). */
@@ -36,11 +36,14 @@ export interface CardSlots {
 /** How long the "copied" note stays on the key. */
 const COPIED_MS = 1400;
 
-function SectionHead({ pal, children, onPress, testID, expanded }: { pal: Palette; children: ReactNode; onPress?: () => void; testID?: string; expanded?: boolean }) {
-  const style = {
-    flexDirection: "row" as const, alignItems: "center" as const, gap: 6, marginBottom: 6, paddingBottom: 4,
-    borderBottomWidth: 1, borderBottomColor: pal.grid,
-  };
+function SectionHead({ pal, children, onPress, testID, expanded, flat }: { pal: Palette; children: ReactNode; onPress?: () => void; testID?: string; expanded?: boolean; flat?: boolean }) {
+  // `flat`: the caller draws the rule (a heading with a button beside it).
+  const style = flat
+    ? { flexDirection: "row" as const, alignItems: "center" as const, gap: 6, flex: 1, minWidth: 0, alignSelf: "stretch" as const }
+    : {
+        flexDirection: "row" as const, alignItems: "center" as const, gap: 6, marginBottom: 6, paddingBottom: 4,
+        borderBottomWidth: 1, borderBottomColor: pal.grid,
+      };
   if (!onPress) return <View style={style}>{children}</View>;
   return (
     <Pressable testID={testID} accessibilityRole="button" accessibilityState={{ expanded }} onPress={onPress} style={style}>
@@ -53,17 +56,24 @@ function SecLabel({ pal, text }: { pal: Palette; text: string }) {
   return <Text style={{ fontSize: FONT.secHead, textTransform: "uppercase", letterSpacing: 0.6, color: pal.muted }}>{text}</Text>;
 }
 
-export function CardPane({ id, compact, slots }: { id: string | null; compact: boolean; slots: CardSlots }) {
+/**
+ * One card pane. `focus` is the card pinned in the left pane of two-card
+ * mode (reference paintCard isFocus): no history arrows there (history
+ * belongs to the pane you navigate in), and its pin button unpins. On a
+ * narrow screen (`compact`) there is one pane, so no pin at all.
+ */
+export function CardPane({ id, compact, slots, focus = false }: { id: string | null; compact: boolean; slots: CardSlots; focus?: boolean }) {
   const b = useBeads();
   const { pal, t, data } = b;
   const { ui, dispatch } = useStore();
   const { data: cached, loading } = useCard(b.hostId, b.workspaceId, id, data.state.revision);
+  const twoCards = Boolean(ui.focusId);
 
   if (!id) {
     return (
       <View testID="beads-card-empty" style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 28, gap: 6 }}>
-        <Text style={{ color: pal.ink, fontSize: 15, fontWeight: "600" }}>{t.pickIssue}</Text>
-        <Text style={{ color: pal.muted, fontSize: FONT.md, textAlign: "center", maxWidth: 360 }}>{t.pickIssueHint}</Text>
+        <Text style={{ color: pal.ink, fontSize: 15, fontWeight: "600" }}>{twoCards ? t.pickRelated : t.pickIssue}</Text>
+        <Text style={{ color: pal.muted, fontSize: FONT.md, textAlign: "center", maxWidth: 360 }}>{twoCards ? t.pickRelatedHint : t.pickIssueHint}</Text>
       </View>
     );
   }
@@ -71,10 +81,14 @@ export function CardPane({ id, compact, slots }: { id: string | null; compact: b
   const card = cached?.card && cached.card.id === id ? cached.card : null;
   const row = b.index?.byId.get(id);
   return (
-    <View testID="beads-card" style={{ flex: 1, minWidth: 0 }}>
+    <View testID={focus ? "beads-card-focus" : "beads-card"} style={{ flex: 1, minWidth: 0 }}>
       <View style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 14, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: pal.border }}>
-        <Btn pal={pal} icon="ChevronLeft" title={t.back} testID="beads-card-back" disabled={ui.historyPos <= 0} onPress={() => dispatch({ type: "back" })} />
-        <Btn pal={pal} icon="ChevronRight" title={t.forward} testID="beads-card-forward" disabled={ui.historyPos >= ui.history.length - 1} onPress={() => dispatch({ type: "forward" })} />
+        {focus ? null : (
+          <>
+            <Btn pal={pal} icon="ChevronLeft" title={t.back} testID="beads-card-back" disabled={ui.historyPos <= 0} onPress={() => dispatch({ type: "back" })} />
+            <Btn pal={pal} icon="ChevronRight" title={t.forward} testID="beads-card-forward" disabled={ui.historyPos >= ui.history.length - 1} onPress={() => dispatch({ type: "forward" })} />
+          </>
+        )}
         <View style={{ flex: 1 }} />
         {card && cached?.note ? (
           <View
@@ -85,7 +99,18 @@ export function CardPane({ id, compact, slots }: { id: string | null; compact: b
           </View>
         ) : null}
         {slots.headerActions?.(card)}
-        <Btn pal={pal} icon="X" title={t.close} testID="beads-card-close" onPress={() => dispatch({ type: "select", id: null })} />
+        {compact ? null : (
+          <Btn
+            pal={pal}
+            icon={focus ? "Minimize2" : "Maximize2"}
+            title={focus ? t.unpin : t.pin}
+            testID={focus ? "beads-card-unpin" : "beads-card-pin"}
+            pressed={focus}
+            onPress={() => dispatch(focus ? { type: "unpin" } : { type: "pin", id })}
+          />
+        )}
+        {/* One close for the whole thing: both cards go, the tree comes back. */}
+        <Btn pal={pal} icon="X" title={twoCards ? t.closeAll : t.close} testID={focus ? "beads-card-focus-close" : "beads-card-close"} onPress={() => dispatch({ type: "closeAll" })} />
       </View>
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: compact ? 14 : 16, paddingTop: 14, paddingBottom: 28 }}>
         {card ? (
@@ -317,6 +342,7 @@ function RelBlock({ issueId, section, label, list, progress = true }: { issueId:
   const { pal, t, openIssue } = useBeads();
   const { ui, dispatch } = useStore();
   const [width, setWidth] = useState(0);
+  const [picker, setPicker] = useState(false);
   if (!list || !list.all.length) return null;
   const key = `${issueId}:${section}`;
   const collapsed = ui.collapsedSections.indexOf(key) >= 0;
@@ -324,12 +350,15 @@ function RelBlock({ issueId, section, label, list, progress = true }: { issueId:
   const minW = relTrackWidth(cols);
   const track = Math.max(width, minW);
   return (
-    <View style={{ marginTop: 18 }} testID={`beads-rel-${section}`}>
-      <SectionHead pal={pal} testID={`beads-relhead-${section}`} expanded={!collapsed} onPress={() => dispatch({ type: "toggleSection", key })}>
-        <Chevron pal={pal} open={!collapsed} />
-        <SecLabel pal={pal} text={label} />
-        <Text style={{ fontSize: FONT.secHead, color: pal.muted }}>{list.all.length}</Text>
-      </SectionHead>
+    <View style={{ marginTop: 18, zIndex: picker ? 40 : 1 }} testID={`beads-rel-${section}`}>
+      <View style={{ flexDirection: "row", alignItems: "center", zIndex: 2, marginBottom: 6, paddingBottom: 2, borderBottomWidth: 1, borderBottomColor: pal.grid, minHeight: 24 }}>
+        <SectionHead pal={pal} flat testID={`beads-relhead-${section}`} expanded={!collapsed} onPress={() => dispatch({ type: "toggleSection", key })}>
+          <Chevron pal={pal} open={!collapsed} />
+          <SecLabel pal={pal} text={label} />
+          <Text style={{ fontSize: FONT.secHead, color: pal.muted }}>{list.all.length}</Text>
+        </SectionHead>
+        {collapsed ? null : <RelColumnPicker section={section} open={picker} onOpen={setPicker} />}
+      </View>
       {collapsed ? null : (
         <View onLayout={(e) => setWidth(Math.round(e.nativeEvent.layout.width))}>
           {progress && list.all.length > 1 ? <ProgressBar entries={list.all} subtree={list.all.length !== list.rows.length} /> : null}
@@ -363,6 +392,72 @@ function RelBlock({ issueId, section, label, list, progress = true }: { issueId:
           ) : null}
         </View>
       )}
+    </View>
+  );
+}
+
+/**
+ * Which columns the linked-issue lists show (reference relColumnPicker): one
+ * setting for every list, `title` always on; hiding the sort column falls
+ * back to the id order (the store does that).
+ */
+function RelColumnPicker({ section, open, onOpen }: { section: string; open: boolean; onOpen: (open: boolean) => void }) {
+  const { pal, t } = useBeads();
+  const { ui, dispatch } = useStore();
+  return (
+    <View style={{ position: "relative", marginLeft: 6 }}>
+      <Pressable
+        testID={`beads-relcols-${section}`}
+        ref={titled(t.relCols) as never}
+        accessibilityRole="button"
+        accessibilityLabel={t.relCols}
+        accessibilityState={{ expanded: open }}
+        onPress={() => onOpen(!open)}
+        style={(st) => ({
+          width: 24, height: 22, borderRadius: 6, alignItems: "center", justifyContent: "center", borderWidth: 1,
+          borderColor: open ? mix(pal.link, 45, pal.border) : "transparent",
+          backgroundColor: (st as { hovered?: boolean }).hovered || open ? pal.hover : "transparent",
+        })}
+      >
+        <Icon name="SlidersHorizontal" size={13} color={open ? pal.link : pal.muted} />
+      </Pressable>
+      {open ? <Backdrop onClose={() => onOpen(false)} /> : null}
+      {open ? (
+        <View
+          testID={`beads-relcols-panel-${section}`}
+          style={{
+            position: "absolute", top: 28, right: 0, zIndex: 50, width: 220, padding: 8, borderRadius: 10,
+            borderWidth: 1, borderColor: pal.border, backgroundColor: pal.card, gap: 2,
+            shadowColor: "#000", shadowOpacity: 0.22, shadowRadius: 15, shadowOffset: { width: 0, height: 10 }, elevation: 8,
+          }}
+        >
+          <Text style={{ fontSize: FONT.th, color: pal.muted, textTransform: "uppercase", letterSpacing: 0.5, paddingHorizontal: 5, paddingBottom: 4 }}>{t.relColsHead}</Text>
+          {REL_COLUMNS.map((col) => {
+            const on = Boolean(col.always) || ui.relColumns.indexOf(col.key) >= 0;
+            return (
+              <Pressable
+                key={col.key}
+                testID={`beads-relcol-${col.key}`}
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: on, disabled: Boolean(col.always) }}
+                disabled={col.always}
+                onPress={() => dispatch({ type: "relColumns", columns: toggleValue(ui.relColumns, col.key) })}
+                style={(st) => ({
+                  flexDirection: "row", alignItems: "center", gap: 7, paddingVertical: 4, paddingHorizontal: 5, borderRadius: 6,
+                  backgroundColor: on ? pal.sel : (st as { hovered?: boolean }).hovered ? pal.hover : "transparent",
+                  opacity: col.always ? 0.6 : 1,
+                })}
+              >
+                <Text style={{ color: on ? pal.link : pal.muted, fontSize: FONT.control }}>{on ? "☑" : "☐"}</Text>
+                <Text style={{ color: on ? pal.ink : pal.ink2, fontSize: FONT.control }}>{columnLabel(t, col.key)}</Text>
+              </Pressable>
+            );
+          })}
+          <View style={{ flexDirection: "row", justifyContent: "flex-end", marginTop: 6 }}>
+            <Btn pal={pal} small testID={`beads-relcols-reset-${section}`} label={t.resetColumns} onPress={() => dispatch({ type: "relColumns", columns: REL_COLUMNS_DEFAULT.slice() })} />
+          </View>
+        </View>
+      ) : null}
     </View>
   );
 }
