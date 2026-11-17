@@ -18,6 +18,8 @@
   ],
   "scripts": {
     "typecheck": "tsc --noEmit",
+    "smoke": "node --test tests/smoke.test.ts tests/smoke-write.test.ts",
+    "write": "node --test tests/write.test.ts",
     "test": "npm run typecheck && node --test tests/*.test.ts",
     "shot": "node tests/shot.mjs",
     "fixture": "node tests/fixture/build.mjs"
