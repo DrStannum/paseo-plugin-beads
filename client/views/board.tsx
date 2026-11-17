@@ -226,7 +226,8 @@ function LaneView({ lane, page, width, height, over, pal, t, card, onMore }: Lan
         )}
       </ScrollView>
       {n > page ? (
-        <View style={{ paddingHorizontal: 8, paddingBottom: 8 }}>
+        // A footer under the scrolling cards, set off by a rule so the last card is not read as cut by the button.
+        <View style={{ padding: 8, borderTopWidth: 1, borderTopColor: pal.border }}>
           <Btn pal={pal} label={t.boardMore(n - page)} testID={`beads-lanemore-${lane.status}`} onPress={() => onMore(lane.status, page + BOARD_PAGE)} />
         </View>
       ) : null}
