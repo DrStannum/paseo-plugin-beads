@@ -195,10 +195,22 @@ export function removeFixtureDir(/** @type {string} */ dir) {
 /**
  * Build a fixture project.
  *
- * @param {{ mode?: 'bd' | 'jsonl', team?: boolean, variant?: 'main' | 'other' }} [opts]
+ * `variant: 'bare'` is a plain directory with no .beads anywhere above it —
+ * the panel's "beads is not set up" empty state.
+ *
+ * @param {{ mode?: 'bd' | 'jsonl', team?: boolean, variant?: 'main' | 'other' | 'bare' }} [opts]
  * @returns {{ dir: string, name: string, prefix: string, mode: 'bd' | 'jsonl', rows: any[], cleanup: () => void }}
  */
 export function buildFixture({ mode = 'bd', team = false, variant = 'main' } = {}) {
+  if (variant === 'bare') {
+    const owner = path.join(FIXTURE_ROOT, 'bare');
+    const dir = path.join(owner, 'demo-empty');
+    if (fs.existsSync(owner)) removeFixtureDir(dir);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(owner, MARKER), 'built by tests/fixture/build.mjs; safe to delete\n');
+    fs.writeFileSync(path.join(dir, 'README.md'), 'A project without beads.\n');
+    return { dir, name: 'demo-empty', prefix: '', mode, rows: [], cleanup: () => removeFixtureDir(dir) };
+  }
   const name = variant === 'other' ? 'demo-docs' : 'demo-shop';
   const prefix = variant === 'other' ? FIXTURE.other.prefix : FIXTURE.tree.prefix;
   const key = [variant, mode, team ? 'team' : null].filter(Boolean).join('-');
@@ -209,7 +221,7 @@ export function buildFixture({ mode = 'bd', team = false, variant = 'main' } = {
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(owner, MARKER), 'built by tests/fixture/build.mjs; safe to delete\n');
 
-  const rows = fixtureRows({ team, variant, mode });
+  const rows = fixtureRows({ team, variant: variant === 'other' ? 'other' : 'main', mode });
   const jsonl = rows.map((r) => JSON.stringify(r)).join('\n') + '\n';
   const cleanup = () => removeFixtureDir(dir);
   try {

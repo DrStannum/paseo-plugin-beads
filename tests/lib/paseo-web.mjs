@@ -96,7 +96,7 @@ function dropStaleProjects(/** @type {string} */ dir) {
 }
 
 /**
- * @typedef {{ mode?: 'bd' | 'jsonl', team?: boolean, variant?: 'main' | 'other' }} FixtureOptions
+ * @typedef {{ mode?: 'bd' | 'jsonl', team?: boolean, variant?: 'main' | 'other' | 'bare' }} FixtureOptions
  * @typedef {{ dir: string, name: string, projectId: string, workspaceId: string, serverId: string, fixture: ReturnType<typeof buildFixture> }} Workspace
  */
 
@@ -228,14 +228,15 @@ export async function withPanel(opts, fn) {
     // A deep link straight to the workspace is redirected to /open-project
     // while the app boots, so boot on "/" and navigate client-side.
     await page.goto(`${ORIGIN}/`, { waitUntil: 'domcontentloaded' });
-    await page.locator('[data-testid="sidebar-global-new-workspace"]').waitFor({ timeout: 90_000 });
+    // Attached, not visible: on a phone-sized viewport the sidebar is a hidden drawer.
+    await page.locator('[data-testid="sidebar-global-new-workspace"]').waitFor({ state: 'attached', timeout: 90_000 });
     const booted = Date.now() - t0;
     await page.evaluate((/** @type {string} */ u) => {
       history.pushState({}, '', u);
       dispatchEvent(new PopStateEvent('popstate'));
     }, `/h/${workspace.serverId}/workspace/${workspace.workspaceId}`);
     await page.locator('[data-testid="workspace-pane-main"] [data-testid="workspace-tabs-row"]').waitFor({ timeout: 30_000 });
-    if (!sidebar) {
+    if (!sidebar && await page.locator('[data-testid="sidebar-global-new-workspace"]').isVisible()) {
       await page.keyboard.press('Control+Period'); // "toggle left sidebar" on non-mac
       await page.locator('[data-testid="sidebar-global-new-workspace"]').waitFor({ state: 'hidden', timeout: 5_000 })
         .catch(() => log('sidebar did not collapse; the crop still excludes it'));
