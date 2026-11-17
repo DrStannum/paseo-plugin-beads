@@ -139,3 +139,11 @@ test("export badge: a failed export is stale until retried", () => {
   t = observed(t, st({ runs: 2 }), 2);
   assert.deepEqual(badgeOf(t, 3), { kind: "done", imported: null });
 });
+
+test("export badge: the export a save asked for flashes done even when no poll saw it running", () => {
+  let t = observed(TRACK_INIT, st({ runs: 3 }), 0);
+  t = requested(t, false); // the write landed: its export is ours
+  t = observed(t, st({ runs: 4, lastOkAt: 5 }), 50); // already over by the first look
+  assert.deepEqual(badgeOf(t, 60), { kind: "done", imported: null });
+  assert.equal(inFlight(t), false);
+});

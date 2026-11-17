@@ -145,17 +145,22 @@ try {
           await dragOver(panel, DRAGGED, 'in_progress');
           await panel.locator(sel('beads-board-ghost')).waitFor({ timeout: 5_000 });
           if (want('preview-board-drag-en')) files.push(await shot(page, 'preview-board-drag-en', { panel }));
+          // The "exported" badge after the write shows for EXPORT_DONE_MS only; start
+          // watching for it before the drop, or a slow bd show below can outlast it.
+          const exported = panel.locator(sel('beads-export-done')).waitFor({ timeout: 30_000 });
+          exported.catch(() => {});
           await page.mouse.up();
           await panel.locator(`${sel('beads-lane-in_progress')} ${sel(`beads-bcard-${DRAGGED}`)}`).waitFor({ timeout: 30_000 });
+          // The export after the write reports back in the header; wait for it, so the
+          // frame does not depend on whether bd export beat the shot. The checks
+          // through bd come after the frame: a slow bd show must not outlast the badge.
+          await exported;
+          await settle(page);
+          if (want('preview-board-dropped-en')) files.push(await shot(page, 'preview-board-dropped-en', { panel }));
           assert.equal(bdStatus(workspace.dir, DRAGGED), 'in_progress', 'the drop wrote the status');
           // The click that ends a drag opens nothing.
           assert.equal(await panel.locator(sel('beads-card-pane')).count(), 0, 'a drop does not select');
           checks.push(`drag ${DRAGGED} open → in_progress: bd show says in_progress`);
-          // The export after the write reports back in the header; wait for it, so the
-          // frame does not depend on whether bd export beat the shot.
-          await panel.locator(sel('beads-export-done')).waitFor({ timeout: 30_000 });
-          await settle(page);
-          if (want('preview-board-dropped-en')) files.push(await shot(page, 'preview-board-dropped-en', { panel }));
 
           // The open card hears about a board drag: one shared changeStatus.
           await panel.locator(sel(`beads-bcard-${DRAGGED}`)).click();

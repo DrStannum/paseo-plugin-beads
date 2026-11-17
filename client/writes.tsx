@@ -133,6 +133,9 @@ export function WritesProvider({ tab, children }: { tab: PluginTab; children: Re
       } else {
         void qc.invalidateQueries({ queryKey: key, exact: true });
       }
+      // The write asked the daemon for an export. Count it as ours from here, so
+      // its finish shows "done" even when it ends before a poll sees it running.
+      setTrack((t) => requested(t, false));
       await data.load("save");
       watch();
     },
