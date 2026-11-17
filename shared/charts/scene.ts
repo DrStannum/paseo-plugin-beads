@@ -366,7 +366,9 @@ export interface StackOpts extends TimeAxisOpts {
  * Stacked areas, bottom layer first, each band stroked in the surface color
  * so the boundary between two fills stays readable where they run flat. A
  * series of one step is drawn across the whole plot rather than as a line of
- * no width.
+ * no width. Vertices sit at the middle of each step's slot, like the points
+ * of lineScene and the bars of pairedBarsScene, so the dates of every chart
+ * on the over-time page line up (the reference ran this one edge to edge).
  */
 export function stackScene(o: StackOpts): Scene {
   const W = o.width;
@@ -381,7 +383,8 @@ export function stackScene(o: StackOpts): Scene {
   }
   const max = scaleMax(totals);
   const plotW = W - PAD_L - PAD_R;
-  const x = (i: number) => (n === 1 ? PAD_L + plotW / 2 : PAD_L + (i / Math.max(n - 1, 1)) * plotW);
+  const slot = plotW / Math.max(n, 1);
+  const x = (i: number) => PAD_L + slot * (i + 0.5);
   const y = yScale(max, padT, H - PAD_B);
   const marks: Mark[] = gridMarks(max, W, y, axisNumber);
   const surface = o.surface ?? "raised";
@@ -400,11 +403,8 @@ export function stackScene(o: StackOpts): Scene {
     }
   }
   if (o.tip) {
-    const slot = plotW / Math.max(n, 1);
     for (let i = 0; i < n; i++) {
-      const left = n === 1 ? PAD_L : Math.max(PAD_L, x(i) - slot / 2);
-      const right = n === 1 ? W - PAD_R : Math.min(W - PAD_R, x(i) + slot / 2);
-      marks.push({ kind: "rect", x: left, y: padT, w: right - left, h: H - padT - PAD_B, fill: "transparent", hit: true, tip: o.tip(i) });
+      marks.push({ kind: "rect", x: PAD_L + slot * i, y: padT, w: slot, h: H - padT - PAD_B, fill: "transparent", hit: true, tip: o.tip(i) });
     }
   }
   marks.push(...xAxisMarks(o.starts, x, H - PAD_B + 14, o.step, W, o.locale));

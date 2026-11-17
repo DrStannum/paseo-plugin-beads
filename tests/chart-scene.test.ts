@@ -15,7 +15,7 @@ import { FIXTURE, TEAM_NOW } from "./fixture/data.mjs";
 import {
   aggregateFlow, areaPath, axisLabel, axisNumber, barPercent, cohortWash, escapeSvgText, lineScene, linePath,
   MIN_PLOT_W, pairedBarsScene, PAD_L, PAD_R, sceneToSvgMarkup, scaleMax, seriesBarsScene, sparklineScene, stackScene,
-  SVG_MAX_BYTES, tickEvery, tickIndices, utf8Bytes, yScale, type ChartRow, type Mark, type Scene,
+  SVG_MAX_BYTES, textWidth, tickEvery, tickIndices, utf8Bytes, xAxisMarks, yScale, type ChartRow, type Mark, type Scene,
 } from "../shared/charts/index.ts";
 import { bucketToken, chartColors, colorResolver, labelSlots, luminance, mix, parseColor } from "../client/charts/palette.ts";
 
@@ -137,6 +137,19 @@ test("stackScene: one band per layer, stacked; a single step spans the plot", ()
   assert.ok(d.startsWith(`M${PAD_L},`) && d.includes(`L${600 - PAD_R},`), d);
 });
 
+test("stackScene: vertices and dates sit where lineScene and the bars put them", () => {
+  const values = [1, 2, 3, 4];
+  const stack = stackScene({ ...base(4), layers: [{ values, color: "good" }] });
+  const line = lineScene({ ...base(4), series: [{ values, color: "accent" }], tip: () => "x" });
+  const bars = pairedBarsScene({ ...base(4), left: { values, color: "muted", tip: () => "" }, right: { values, color: "good", tip: () => "" } });
+  const axis = (s: Scene) => of(s, "text").filter((t) => /[A-Z]/.test(t.text)).map((t) => `${t.x}:${t.text}`);
+  assert.deepEqual(axis(stack), axis(line));
+  assert.deepEqual(axis(stack), axis(bars));
+  const xs = of(line, "circle").map((c) => c.cx);
+  const d = of(stack, "path")[0]!.d;
+  for (const x of xs) assert.ok(d.includes(`${x},`), `${x} in ${d}`);
+});
+
 test("pairedBarsScene: zeros draw nothing, bars dim, each its own group with its tip", () => {
   const s = pairedBarsScene({
     ...base(3),
@@ -184,8 +197,12 @@ test("barPercent and cohortWash", () => {
 test("x axis labels never hang off the box", () => {
   const s = stackScene({ ...base(13, MIN_PLOT_W), layers: [{ values: Array(13).fill(1), color: "good" }] });
   const last = of(s, "text").filter((t) => t.y > 150).pop()!;
-  assert.equal(last.anchor, "end");
-  assert.ok(last.x <= MIN_PLOT_W);
+  const half = textWidth(last.text, last.size ?? 10) / 2;
+  const right = last.anchor === "end" ? last.x : last.anchor === "start" ? last.x + 2 * half : last.x + half;
+  assert.ok(right <= MIN_PLOT_W, `${last.anchor} ${last.x}`);
+  // A label that would hang off is pinned to the edge.
+  const pinned = xAxisMarks(starts(3), (i) => [10, 300, MIN_PLOT_W - 2][i]!, 190, "week", MIN_PLOT_W, "en-US");
+  assert.equal(pinned[pinned.length - 1]!.anchor, "end");
 });
 
 // ── markup ──
