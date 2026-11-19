@@ -43,8 +43,13 @@ and never creates a git commit.
   and comments are signed with it.
 - **Sync in one button.** Reconciles `issues.jsonl` and the database both ways,
   never letting older data overwrite newer.
-- **Watch the agents work.** A cheap change marker is polled, and what changed is
-  highlighted without disturbing your selection, scroll or open branches.
+- **Watch the agents work.** A cheap change marker is polled, only the issues
+  that changed are fetched, and they are highlighted without disturbing your
+  selection, scroll or open branches.
+- **Opens at once.** The daemon host keeps the last list of each project on disk
+  and the app keeps it in memory, shared by every Beads tab and the explorer, so
+  the tab draws the issues straight away, after a plugin reload too, and a quiet
+  "Refreshing…" says when newer rows are on their way.
 - **Works without a database too.** With only `issues.jsonl` the panel reads that
   and goes read-only.
 - **Your work in the explorer.** A compact panel in Paseo's right sidebar: your
@@ -53,7 +58,8 @@ and never creates a git commit.
 - **A button in the workspace header** of every workspace with a `.beads`
   project: the tab, the board or the explorer in one click, also on a
   phone-sized window.
-- **Russian and English**, light and dark, one column on a narrow pane.
+- **Russian and English**, light and dark; in a narrow tab or on a phone, the
+  list and then the card in its place, with a way back.
 
 More pictures: [the whole interface, screenshot by screenshot](docs/screenshots.md).
 
@@ -77,10 +83,11 @@ paseo plugin install /path/to/paseo-plugin-beads
 ```
 
 The daemon builds the plugin and loads it; nothing else needs restarting. Then, in
-a workspace, open **Beads** from the workspace's panels, or type **Open Beads** (or **Open
-Beads board**, **Open Beads in the explorer**) in the Command Center, or use the Beads button in the
-workspace header. The plugin's settings page sits under
-Paseo's **Settings**, next to the other plugins.
+a workspace, open the **Beads** tab from the **+** menu over the workspace's tabs,
+or type **Open Beads** (or **Open Beads board**, **Open Beads in the explorer**) in
+the Command Center, or use the Beads button in the workspace header. The compact
+panel for the explorer is added from the explorer's own **+** menu. The plugin's
+settings page sits under Paseo's **Settings**, next to the other plugins.
 
 The repository URL above is the intended home of the project; until it is
 published there, install from a local checkout.
@@ -91,12 +98,12 @@ The full description lives in [`docs/`](docs/README.md):
 
 | | |
 |---|---|
-| [What the panel does](docs/features.md) | Every part of the interface: tree, board, charts, columns, filters, card, comments, settings, editing, Sync, two-card mode, narrow layout, platforms, languages |
+| [What the panel does](docs/features.md) | Every part of the interface: the tab and how to open it, the explorer panel, the header button, tree, board, charts, columns, filters, card, comments, settings, editing, Sync, the narrow tab, platforms, languages |
 | [Two modes: `bd` and `jsonl`](docs/modes.md) | Where the data comes from, and what the read-only fallback cannot do |
 | [Screenshots](docs/screenshots.md) | The whole interface in both themes and both languages |
-| [How reading works](docs/reading.md) | One call per snapshot, the change marker, the 30-second RPC budget, the boundaries |
+| [How reading works](docs/reading.md) | One call per snapshot, the copy on disk, deltas, the shared cache and one poll, the change marker, the 30-second RPC budget, the boundaries |
 | [How writing works](docs/writing.md) | What can be changed, why no git commit is ever created, how Sync works |
-| [Privacy and issue text](docs/privacy.md) | What leaves the host, and what keeps issue text from becoming markup or log output |
+| [Privacy and issue text](docs/privacy.md) | What leaves the host, what it keeps on disk, and what keeps issue text from becoming markup or log output |
 | [Design notes](docs/design-notes.md) | The palette, and why no colour carries the message alone |
 | [Development and tests](docs/development.md) | The suites, the screenshot harness, what each one needs |
 
@@ -113,9 +120,10 @@ Found a security problem? Please report it privately, see
 
 This plugin is a port of
 [cloudcli-plugin-beads](https://github.com/DrStannum/cloudcli-plugin-beads), the
-same panel as a tab for CloudCLI UI. Its behaviour, texts, tests and documentation
-are the reference this port follows; where the two differ on purpose, the
-[changelog](CHANGELOG.md) says so.
+same panel as a tab for CloudCLI UI. Its data logic, texts and tests are the
+reference this port follows; the windows are Paseo's own (a tab of the workspace,
+a panel in the explorer, the Command Center, the header button), and where the two
+differ on purpose, the [changelog](CHANGELOG.md) says so.
 
 ## Related
 

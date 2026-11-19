@@ -98,10 +98,16 @@ warms a project after replying; archiving a workspace removes its file unless
 another workspace opens the same `.beads`; `contribute()` returns at once and the
 sweep runs after it, or not at all if the plugin is stopped first.
 
-The rest are pure logic: the tree, filters and search (`tree`, `filters`), the
+The rest are pure logic: the tree, filters and search (`tree`, `filters`; the
+client's handling of deltas and of the "Refreshing…" mark is in `tree` too), the
 board's lanes and drag arithmetic (`board`), the explorer's "my work" lists,
-counts and search (`explorer`), the edit form's diff and the settings
-schema (`form`), chart aggregations and scenes (`charts`, `chart-scene`,
+counts and search (`explorer`), the tab state, its "Back" stack, the narrow tab's
+way back to the list and the migration of an older saved state (`store`), the
+debounced write of the tab state (`tab-saver`), the one revision poll per
+workspace on fake clocks (`poller`), the way the Command Center, the explorer and
+the header button hand an issue or a view to the tab (`intent`), the set of header
+buttons following the workspaces that have a project (`header-button`), the edit
+form's diff and the settings schema (`form`), chart aggregations and scenes (`charts`, `chart-scene`,
 `charts-view`), the Markdown renderer with its hostile inputs (`markdown`), the
 string tables of both languages (`strings`), and the documentation (`docs`: every
 page exists in both languages, every relative link and image resolves, and every
@@ -110,7 +116,8 @@ screenshot is shown in the gallery).
 ## The screenshot harness
 
 `npm run preview` (`tests/preview.mjs`) runs four scripts one after another, each
-in its own process: `shot.mjs` (the tree, the card, filters, layout),
+in its own process: `shot.mjs` (the tree, the card, filters, layout, the explorer panel, the header
+button),
 `shot-board.mjs`, `shot-charts.mjs` and `shot-writes.mjs`. Each can be run alone,
 and narrowed to the frames whose name contains a word:
 
@@ -144,7 +151,13 @@ How it works (`tests/lib/paseo-web.mjs`):
   through the UI, and checks every result with `bd`. The explorer frames are drawn
   with a reader's name set for the run (and back to the default after), count
   the page's RPCs to check that opening the explorer beside a loaded tab sends no
-  `beads.tree`, and check that a picked row opens its card in the tab.
+  `beads.tree`, and check that a picked row opens its card in the tab. In a
+  narrow tab the tree and the board scripts check that a picked card takes the
+  list's place and that the way back keeps the selection and the scroll. The
+  header button is checked in a wide window (its menu opens the tab, the board
+  and the explorer, and a workspace without `.beads` gets no button) and in a
+  phone-sized one (the button in the header's sheet, no explorer item). The
+  "Refreshing…" frame holds the page's tree requests back to keep the mark up.
 
 The run ends with a gallery check: every `tests/preview-*.png` was drawn by this
 run (otherwise it is an orphan and has to go), every drawn PNG is listed in its

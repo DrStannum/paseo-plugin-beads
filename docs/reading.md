@@ -2,7 +2,7 @@
 
 **English** · [Русский](ru/reading.md)
 
-How a workspace becomes a project, one call per snapshot, a change marker that survives Dolt, the 30-second RPC budget, what the daemon and the panel keep when `bd` fails, what it all costs on a large project, and the boundaries every reading call runs inside.
+How a workspace becomes a project, one call per snapshot, the copy kept on disk across restarts, only what moved on the wire, one shared cache and one poll in the app, a change marker that survives Dolt, the 30-second RPC budget, what the daemon and the panel keep when `bd` fails, what it all costs on a large project, and the boundaries every reading call runs inside.
 
 **The workspace is resolved by the daemon.** Every RPC carries a workspace id and
 nothing else that names a place. The plugin's server half asks the daemon for that
@@ -24,6 +24,28 @@ running. Requests that arrive while it runs (a poll, a card, a search) wait for 
 and share its answer. If the revision moved or a write landed after it started,
 they wait it out and start exactly one fresh load, so no caller is handed data
 from before its own write.
+
+**The snapshot survives a restart.** After every good load, once the reply has
+gone, the daemon writes the snapshot to a file under `~/.paseo/plugin-data/beads/`
+(under `$PASEO_HOME` if that is set), atomically: a temporary file, flushed, then
+renamed over the old one, so a crash leaves the previous copy or the new one,
+never half of either. A failed load is never saved, and a snapshot over 64 MB is
+not saved at all (an older file for that project goes too, so a restart never
+serves something ever older). The first request for a project after a plugin
+reload or a daemon restart reads that file back. If the revision still matches,
+it is the current snapshot and no `bd` runs. If it moved, the file stands in: the
+tree, the card and the search answer from it at once, while exactly one `bd list`
+runs behind it; the next tree the panel asks for brings the fresh rows, as a delta
+from the copy it holds (see below). A write never plans against that older copy:
+an edit after a restart waits for a fresh load. The first `beads.revision` of a
+project, the cheap poll every open panel starts with, warms it the same way after
+replying, so the tree is often ready before it is asked for. A broken or foreign
+file reads as nothing and is deleted; the project then loads cold, as before.
+The housekeeping runs a little after the plugin starts: a project not opened for
+30 days goes, past 256 MB in all the least recently used ones go, and archiving a
+workspace in Paseo removes its project's file unless another workspace still opens
+the same `.beads`. Who can read the files is in
+[Privacy and issue text](privacy.md).
 
 **The 30-second budget and `busy`.** The Paseo daemon gives a plugin RPC 30
 seconds. A reading handler waits for `bd` at most 25 seconds; if the load is not
@@ -81,8 +103,10 @@ a refresh is in flight, or the server is still loading `bd` behind a disk copy) 
 quiet "Refreshing…" sits by the title; it shows only once a refresh has lasted
 0.4 s and never on a poll that finds nothing new. The new rows then replace the
 old ones in place: the selected issue, the open branches and the scroll of the
-tree and the board stay where they were. Only memory: nothing goes to storage, because issue
-text can carry secrets. A failed refresh never empties the list: the rows stay
+tree and the board stay where they were. In the app this is memory only: the
+client writes no issue text to the device's storage, because issue text can carry
+secrets (the tab state holds ids, filters and layout); the one copy on disk is the
+daemon host's, above. A failed refresh never empties the list: the rows stay
 under a "Data may be out of date" strip with the reason and a **Retry** button; a
 card whose reload failed stays up marked "May be out of date". Each failed poll
 round doubles the wait before the next one, up to 5 minutes (or the chosen

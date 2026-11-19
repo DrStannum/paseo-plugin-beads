@@ -5,16 +5,23 @@
 Every part of the interface, in the order you meet it: where the panel lives, the
 tree, the board, the charts, the columns, the filters, the card, editing, syncing.
 
-**Where it lives.** Beads is a workspace panel, a tab of the workspace. In a
-workspace, open it from the workspace's panels, or from the Command Center: **Open
-Beads** opens the tab (or brings up the one already open), **Open Beads board**
-does the same and switches it to the board. It shows the issues of whichever `.beads` project the workspace directory
-sits in (the workspace directory itself or the nearest parent holding a `.beads`,
-the rule `bd` itself follows). The daemon resolves that directory from the
-workspace, so the panel never sends a path of its own. Everything the panel
-remembers between visits (the open branches, the selection, the filters, the
-columns, the sort, the view, the card width) is kept in the panel's own tab state,
-which Paseo stores with the tab, so each workspace keeps its own.
+**Where it lives.** Beads is a tab of the workspace. Open it from the **+** menu
+over the workspace's tabs, from the Command Center (**Open Beads** opens the tab,
+or brings up the one already open; **Open Beads board** does the same and switches
+it to the board), or from the Beads button in the workspace header (below). It
+shows the issues of whichever `.beads` project the workspace directory sits in
+(the workspace directory itself or the nearest parent holding a `.beads`, the rule
+`bd` itself follows). The daemon resolves that directory from the workspace, so
+the panel never sends a path of its own.
+
+The tab is an ordinary Paseo tab: it can be moved, split beside another one or
+closed, and the **+** menu always adds a new Beads tab, even when one is open.
+Every Beads tab of a workspace shows the same data, fetched once, and keeps a
+state of its own. That state (the open branches, the selection, the filters, the
+columns, the sort, the view, the card width) is what the tab remembers between
+visits; Paseo stores it with the tab, on the device, so each tab and each
+workspace keeps its own. The panel itself opens no second window, overlay or
+floating card: when two things should sit side by side, they are two tabs.
 
 **The header button.** A workspace that has a `.beads` project gets a Beads button
 in its header, a menu: **Open Beads**, **Open Beads board**, **Open Beads in the
@@ -200,12 +207,17 @@ ellipsis.
 
 ![The column panel open](../tests/preview-columns-light-en.png)
 
-**In a narrow tab** (below 900 px, or whenever Paseo reports a compact layout, as
-it does on a phone) the panel becomes one column: first the list, then a picked
-issue's card in its place across the whole tab, with a button back to the tree
-or the board. Back at the list, the issue is still selected and the list is
-scrolled where it was. The board narrows its lanes so one and a hint of the next
-fit, and is swiped sideways. The splitter is hidden there.
+**In a narrow tab** (the tab's own width below 900 px, as when it is split
+beside another, or whenever Paseo reports a compact layout, as it does in a
+phone-sized window) the panel becomes one screen at a time: first the list, then a
+picked issue's card in its place across the whole tab, with a button back to the
+tree or the board. While the card is up, the toolbar (search, filters, the view
+switch) steps aside; the title and the counts stay. If you followed links from
+that card, the first button is **Back** through them instead, and the cross
+returns to the list at once. Back at the list, the issue is still selected and the
+list is scrolled where it was, sideways on the board too. The board narrows its
+lanes so one and a hint of the next fit, and is swiped sideways. The splitter is
+hidden there.
 
 **Card width.** On the web and in the desktop app there is a splitter between the
 list and the card: drag it to give the card more room; a double click restores the
@@ -322,10 +334,12 @@ blockers are closed. It is computed from the snapshot without a separate call,
 and the tests check it against a real `bd ready`.
 
 **Auto-refresh.** On the chosen interval the panel asks the daemon for a cheap
-change marker and fetches the tree again only if it moved; polling pauses while
-the app is in the background. Changed issues are highlighted briefly, so you can
-watch the agents work. A refresh does not disturb the selection, the expanded
-branches, the scroll position or where you are in the card.
+change marker and fetches the tree again only if it moved, and then only the
+issues that changed; polling pauses while the app is in the background. However
+many Beads tabs and explorer panels show a workspace, the check runs once for it.
+Changed issues are highlighted briefly, so you can watch the agents work. A
+refresh does not disturb the selection, the expanded branches, the scroll position
+or where you are in the card.
 
 **When a refresh fails.** The list on screen is never wiped by a failed refresh.
 The rows stay, and a quiet strip under the counts says "Data may be out of date"
@@ -338,11 +352,21 @@ problem as an empty state with a hint and a **Retry** button.
 
 ![The "Data may be out of date" strip over a list kept after a failed refresh](../tests/preview-stale-en.png)
 
-**Coming back is instant.** The panel keeps the last good list of up to eight
-workspaces, and the cards opened in them, in memory for as long as the app is
-open, so reopening the panel or switching back to a workspace draws the list at
-once and checks for changes in the background. This lives in memory only, never
-in storage, because issue text can carry secrets.
+**Coming back is instant.** The app keeps the last good list of up to eight
+workspaces, and the cards opened in them, in memory for as long as it is open, one
+copy for every Beads tab and explorer panel of the host, so reopening the tab,
+adding a second one or switching back to a workspace draws the list at once and
+checks for changes in the background. The daemon host also keeps the last list of
+each project on disk, so after a plugin reload or a daemon restart the tab draws
+the issues from that copy straight away while `bd` is asked behind it. While newer rows are on their way, a quiet **Refreshing…** sits by the
+title (only once a refresh has taken longer than a moment); when they arrive they
+replace the old ones in place, and the selection, the open branches, the scroll
+and the open card stay where they were. On the device nothing of the issues is
+stored, because issue text can carry secrets; what the host keeps, where, and how
+to remove it is in [Privacy and issue text](privacy.md), how the copies are kept
+fresh in [How reading works](reading.md).
+
+![Newer data on its way: "Refreshing…" by the title while the rows, the open branches and the card stay](../tests/preview-refreshing-en.png)
 
 ## Platforms
 
@@ -352,7 +376,9 @@ they can do:
 - **Web and the desktop app (Electron)**: everything above. Charts are
   interactive (hover readouts, dimming), tooltips show on hover, the board drags,
   the splitter drags, menus answer the keyboard (arrows, Enter, Esc).
-- **iOS and Android**: the same panel in one column. Charts are drawn as static
+- **iOS and Android**: the same panel; on a phone it is the narrow tab, one
+  screen at a time, and there is no explorer (the header button's sheet is the
+  quick way in). Charts are drawn as static
   pictures (no hover readout), there are no tooltips, the board has no drag and
   changes a status through a long-press "Move to" menu, and the card width is
   fixed. **These builds have not been tried on a device yet**: the native paths

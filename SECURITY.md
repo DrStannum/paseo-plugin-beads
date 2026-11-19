@@ -55,5 +55,7 @@ Issue text comes from a repository and can contain anything, secrets included:
   never issue text;
 - heavy text (descriptions, design, criteria, notes) is searched on the daemon
   and never shipped to the client wholesale;
-- nothing is written to client storage; the issue cache lives in memory;
+- nothing is written to client storage; the issue cache in the app lives in
+  memory; the daemon host keeps the last list of each project on disk, readable
+  by its owner only (see [Privacy and issue text](docs/privacy.md));
 - the committed screenshots render a synthetic fixture, not a real project.
