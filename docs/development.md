@@ -35,6 +35,7 @@ npm run write       # the write path against a real bd, in a throwaway project, 
 npm test            # typecheck + every tests/*.test.ts (smoke, write and the pure logic)
 npm run preview     # every screenshot in the real Paseo web app, plus scripted checks, about 20 minutes
 npm run bench       # timings on a large synthetic project, about 3 minutes; not part of npm test
+npm run bench:open  # the same project opened in the real Paseo web app, about 7 minutes; not part of npm test
 ```
 
 What each one needs:
@@ -46,6 +47,7 @@ What each one needs:
 | `npm run write`, `npm test` | a real `bd` on `PATH`; the test creates and removes its own project |
 | `npm run preview`, `npm run shot*` | a running local Paseo daemon with this plugin loaded, `bd`, and Playwright with Chromium |
 | `npm run bench` | a real `bd` |
+| `npm run bench:open` | as `npm run preview`; it also reloads the plugin (`paseo plugin reload beads`) |
 
 **`tests/support/harness.ts`** calls the plugin's RPC handlers the way the daemon
 does, without one: the input is parsed by the contract, the handler runs with a
@@ -138,6 +140,17 @@ trees at once, the revision poll. It asserts only that every read answers inside
 the daemon's 30 seconds; the rest is for reading. These numbers are where the
 15-second read timeout, the 60-second `bd list` limit and the 25-second handler
 budget come from.
+
+`npm run bench:open` (`tests/bench-open.mjs`) registers the same kind of project in
+Paseo and times what a user waits for in the web app: from the click to the first
+row of the tree when the panel is opened cold (right after a plugin reload, in a
+fresh browser), warm (the tab closed and opened again), as a second tab from the
+"+" menu, after switching to another tab and back, from the view switch to the
+drawn charts, and after a plugin reload with the tab open. For each case it also
+counts the `beads.*` requests and the bytes of their answers, read from the page's
+WebSocket frames, and lists the answer sizes. Each of three runs (`--runs`) starts
+from a plugin reload; the table shows medians. `--n`, `--keep` and `--dir` work as
+in `npm run bench`, and a fixture kept by one can be reused by the other.
 
 ---
 

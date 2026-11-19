@@ -44,6 +44,7 @@
     "shot:writes": "node tests/shot-writes.mjs",
     "shot:board": "node tests/shot-board.mjs",
     "bench": "node tests/bench-large.ts",
+    "bench:open": "node tests/bench-open.mjs",
     "preview": "node tests/preview.mjs",
     "fixture": "node tests/fixture/build.mjs"
   },

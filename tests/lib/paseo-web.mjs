@@ -157,23 +157,28 @@ function dropStaleProjects(/** @type {string} */ dir) {
 
 /**
  * @typedef {{ mode?: 'bd' | 'jsonl', team?: boolean, variant?: 'main' | 'other' | 'bare', many?: number, rich?: boolean, people?: boolean, tag?: string }} FixtureOptions
- * @typedef {{ dir: string, name: string, projectId: string, workspaceId: string, serverId: string, fixture: ReturnType<typeof buildFixture> }} Workspace
+ * @typedef {{ dir: string, name: string, projectId: string, workspaceId: string, serverId: string, fixture: ReturnType<typeof buildFixture> | null }} Workspace
  */
 
 /**
  * Build a fixture, register it in Paseo as a project + background workspace,
  * run fn, then unregister and delete it.
  *
+ * `dir` registers a fixture built earlier (a large one is slow to build, see
+ * tests/bench-open.mjs) instead: it is unregistered afterwards but left on
+ * disk, its owner removes it; `fixture` is then null.
+ *
  * @template T
- * @param {FixtureOptions & { title?: string }} opts
+ * @param {FixtureOptions & { title?: string, dir?: string }} opts
  * @param {(ws: Workspace) => Promise<T>} fn
  * @returns {Promise<T>}
  */
 export async function withWorkspace(opts, fn) {
   const t0 = Date.now();
   pinSettings();
-  const fixture = buildFixture(opts);
-  const removeDir = deferCleanup(() => fixture.cleanup());
+  const fixture = opts.dir ? null : buildFixture(opts);
+  const dir = opts.dir ?? /** @type {NonNullable<typeof fixture>} */ (fixture).dir;
+  const removeDir = deferCleanup(() => fixture?.cleanup());
   /** @type {string | null} */
   let projectId = null;
   const unregister = deferCleanup(() => {
@@ -182,15 +187,15 @@ export async function withWorkspace(opts, fn) {
     }
   });
   try {
-    dropStaleProjects(fixture.dir);
-    projectId = /** @type {string} */ (paseoJson(['project', 'create', fixture.dir]).projectId);
+    dropStaleProjects(dir);
+    projectId = /** @type {string} */ (paseoJson(['project', 'create', dir]).projectId);
     const ws = paseoJson([
-      'workspace', 'create', '--isolation', 'local', '--path', fixture.dir, '--project', projectId,
+      'workspace', 'create', '--isolation', 'local', '--path', dir, '--project', projectId,
       '--background', '--title', opts.title ?? 'beads fixture',
     ]);
     const status = await (await fetch(`${ORIGIN}/api/status`)).json();
-    log(`fixture ${fixture.mode}${opts.team ? '+team' : ''} at ${fixture.dir}: ${projectId}/${ws.workspaceId} (${Date.now() - t0} ms)`);
-    return await fn({ dir: fixture.dir, name: fixture.name, projectId, workspaceId: ws.workspaceId, serverId: status.serverId, fixture });
+    log(`fixture ${fixture?.mode ?? 'prebuilt'}${opts.team ? '+team' : ''} at ${dir}: ${projectId}/${ws.workspaceId} (${Date.now() - t0} ms)`);
+    return await fn({ dir, name: path.basename(dir), projectId, workspaceId: ws.workspaceId, serverId: status.serverId, fixture });
   } finally {
     unregister();
     removeDir();
@@ -253,6 +258,7 @@ async function waitTextStable(/** @type {any} */ locator, quietMs = 600, timeout
  *   now?: string | null,
  *   sidebar?: boolean,
  *   ready?: string | RegExp | ((panel: any) => Promise<void>),
+ *   open?: boolean,
  * }} PanelOptions
  * @typedef {{ page: any, panel: any, workspaceId: string, dir: string, workspace: Workspace, locale: string, theme: string }} PanelContext
  */
@@ -266,6 +272,8 @@ async function waitTextStable(/** @type {any} */ locator, quietMs = 600, timeout
  * dates read the same on every run (the fixture's dates are absolute) — the
  * dashboards need exactly that instant. `now: null` leaves the real clock. `sidebar: false` (the default) collapses Paseo's left sidebar so
  * the panel gets the whole width; shots are cropped to the panel either way.
+ * `open: false` stops at the workspace, with the panel not opened yet (a
+ * benchmark times the opening itself); `ready` is then ignored.
  *
  * @template T
  * @param {PanelOptions} opts
@@ -274,7 +282,7 @@ async function waitTextStable(/** @type {any} */ locator, quietMs = 600, timeout
  */
 export async function withPanel(opts, fn) {
   if (!opts.workspace) return withWorkspace(opts.fixture ?? {}, (workspace) => withPanel({ ...opts, workspace }, fn));
-  const { workspace, theme = 'dark', locale = 'en', viewport = { width: 1280, height: 800 }, now = HELD_NOW, sidebar = false, ready } = opts;
+  const { workspace, theme = 'dark', locale = 'en', viewport = { width: 1280, height: 800 }, now = HELD_NOW, sidebar = false, ready, open = true } = opts;
   const t0 = Date.now();
   const context = await (await browser()).newContext({ viewport, colorScheme: theme, locale: locale === 'ru' ? 'ru-RU' : 'en-US', timezoneId: 'UTC' });
   try {
@@ -303,6 +311,8 @@ export async function withPanel(opts, fn) {
       await page.locator('[data-testid="sidebar-global-new-workspace"]').waitFor({ state: 'hidden', timeout: 5_000 })
         .catch(() => log('sidebar did not collapse; the crop still excludes it'));
     }
+    const panel = page.locator('[data-testid="workspace-pane-main"] > div').nth(1);
+    if (!open) return await fn({ page, panel, workspaceId: workspace.workspaceId, dir: workspace.dir, workspace, locale, theme });
 
     // Our command-center item; its title follows the app language.
     await page.keyboard.press('Control+k');
@@ -314,7 +324,6 @@ export async function withPanel(opts, fn) {
 
     await page.locator('[data-testid^="workspace-tab-plugin_workspace"][data-testid*="beads"]').waitFor({ timeout: 15_000 });
     // The pane is the tabs row plus the content; the panel is the content.
-    const panel = page.locator('[data-testid="workspace-pane-main"] > div').nth(1);
     await panel.waitFor({ timeout: 15_000 });
     if (typeof ready === 'function') await ready(panel);
     else if (ready) await panel.getByText(ready).first().waitFor({ timeout: 30_000 });
