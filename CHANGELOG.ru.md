@@ -8,6 +8,8 @@
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-19
+
 Панель перестроена вокруг собственных окон Paseo и теперь открывается из кеша.
 В CloudCLI у плагина была одна вкладка, поэтому внутри неё жил маленький оконный
 менеджер: вторая карточка с булавкой, карточка-оверлей в узкой вкладке, «назад» и
@@ -228,5 +230,6 @@ beads для CloudCLI UI, в панель рабочего пространст�
 - **Агрегация во времени** возвращает пустой ряд, а не падает, когда все даты
   создания лежат в будущем.
 
-[Unreleased]: https://github.com/DrStannum/paseo-plugin-beads/commits/main
+[Unreleased]: https://github.com/DrStannum/paseo-plugin-beads/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/DrStannum/paseo-plugin-beads/releases/tag/v0.2.0
 [0.1.0]: https://github.com/DrStannum/paseo-plugin-beads

@@ -8,6 +8,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-19
+
 The panel is rebuilt around Paseo's own windows, and it now opens from a cache.
 In CloudCLI the plugin had a single tab, so it carried a small window manager
 inside it: a second pinned card, an overlay card in a narrow tab, back and forward.
@@ -220,5 +222,6 @@ Where Paseo works differently, or where the port fixed something on the way:
 - **The over-time aggregation** returns an empty series instead of failing when
   every creation date lies in the future.
 
-[Unreleased]: https://github.com/DrStannum/paseo-plugin-beads/commits/main
+[Unreleased]: https://github.com/DrStannum/paseo-plugin-beads/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/DrStannum/paseo-plugin-beads/releases/tag/v0.2.0
 [0.1.0]: https://github.com/DrStannum/paseo-plugin-beads
