@@ -2,7 +2,7 @@
 
 **English** · [Русский](ru/reading.md)
 
-How a workspace becomes a project, one call per snapshot, a change marker that survives Dolt, the 30-second RPC budget, what the daemon and the panel keep when `bd` fails, and the boundaries every reading call runs inside.
+How a workspace becomes a project, one call per snapshot, a change marker that survives Dolt, the 30-second RPC budget, what the daemon and the panel keep when `bd` fails, what it all costs on a large project, and the boundaries every reading call runs inside.
 
 **The workspace is resolved by the daemon.** Every RPC carries a workspace id and
 nothing else that names a place. The plugin's server half asks the daemon for that
@@ -92,6 +92,39 @@ interval, if that is longer), and the first success restores the chosen interval
 out in the client from the rows already in hand, after the same filters, the same
 search and the same sort, so switching views costs no call. The lane counts, the
 "N more" pages and every chart are computed there too.
+
+**What it costs, measured.** On a synthetic project of 4016 issues with kilobytes
+of text each (`bd list` prints 14.6 MB; the tree answer is 2 MB), in Paseo web on a
+shared VM (load 3–5), medians of three runs of `npm run bench:open` (and `npm run
+bench` for the server's own lines, see [Development and tests](development.md)),
+before the disk snapshot, the deltas and the shared client cache, and after them.
+A time is from the click to the first frame that shows a row.
+
+| | Before | After |
+|---|---|---|
+| Open after a plugin reload (cold) | 3.6 s (a full `bd list`) | 1.3 s (the disk snapshot; `bd` checks behind it) |
+| Open of a project never loaded | 3.4 s | 3.7 s (the same `bd list`) |
+| Open again after closing the tab (warm) | 374 ms, `beads.tree` "unchanged" 619 B | 345 ms, no `beads.tree` (one `beads.revision`, 390 B) |
+| A second tab from "+" | 345 ms, 619 B | 242 ms, nothing asked |
+| Another tab and back | 204 ms | 157 ms |
+| Switch to the charts | 124 ms | 131 ms |
+| An edit outside the panel, until the poll's tree answer is in | 3.0 s, the full 2 MB | 2.6 s (`bd list`), a delta of 1.2 kB |
+| The tab open through a plugin reload: rows back after the reload itself | 1.7 s | none: back before the CLI reports the plugin running |
+| `beads.tree` "unchanged" | 619 B | 70 B |
+| The tree after a restart, in the server | — | 271 ms from disk, no `bd` |
+| One save of the disk snapshot (blocks the plugin) | — | 210–280 ms, a 13.7 MB file |
+
+Where the rest goes. Of the warm open, Paseo itself takes about 160 ms on this VM
+(the same open with a panel that draws one empty row: 141–233 ms), and its styling
+engine rebuilds the page's whole stylesheet each time a style appears for the first
+time or the last element using one goes; the panel's own share is about 60 ms for
+the first render (header, toolbar, the sorted and filtered tree of 4000 rows) and
+about 80 ms for the rows that fit the window. Coming back to a tab costs the panel
+nothing: a hidden tab keeps its rows. The cold open from disk splits into about
+0.5–0.9 s until the 2 MB answer is in the page (reading the 14 MB snapshot back,
+indexing it, and the trip through the daemon) and about 0.4–0.5 s to take it in
+and draw it. The charts are laid out in the client from the rows already there and
+cost no call, so they need no aggregates from the server.
 
 **The change marker is sizes, not mtime.** Dolt updates its manifest's mtime on
 every *read*, so polling by mtime would see the plugin's own reads as changes and
