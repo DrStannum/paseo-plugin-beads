@@ -53,8 +53,42 @@ const known = (defs: readonly { key: string }[], fallback: readonly string[]) =>
     })
     .catch(fallback.slice());
 
-/** What a tab remembers. Every field has its own fallback. */
-export const TabStateSchema = z.object({
+/**
+ * The version of what a tab remembers. Bump it when a field changes meaning
+ * (not when one is added or dropped: a new field falls back to its default,
+ * a dropped one is cut off), and teach migrateTabState the step up.
+ *
+ * 1 — no `v` (everything before versioning): could still carry `pollMs`
+ *     (now a host setting), and never carried the live-only `focusId`,
+ *     `history`, `historyPos`; no field meant anything else.
+ * 2 — `v: 2`.
+ */
+export const TAB_STATE_VERSION = 2;
+
+/** Old keys no version reads any more; dropped on the way up (the schema would cut them off anyway). */
+const RETIRED_KEYS = ["pollMs", "focusId", "history", "historyPos"];
+
+/**
+ * Bring a tab's saved state up to TAB_STATE_VERSION before the fields are
+ * checked. Whatever is not an object (an empty state — a copy of the tab
+ * opened from "+" has none —, a string, an array) becomes `{}`, so every
+ * field takes its default instead of the whole parse failing. A state from
+ * a newer version is read as is, field by field.
+ */
+export function migrateTabState(raw: unknown): Record<string, unknown> {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const s: Record<string, unknown> = { ...(raw as Record<string, unknown>) };
+  const from = typeof s.v === "number" && Number.isInteger(s.v) && s.v >= 1 ? s.v : 1;
+  if (from < 2) {
+    for (const key of RETIRED_KEYS) delete s[key];
+  }
+  s.v = TAB_STATE_VERSION;
+  return s;
+}
+
+/** The fields a tab remembers. Every field has its own fallback. */
+const TabStateFields = z.object({
+  v: z.literal(TAB_STATE_VERSION).catch(TAB_STATE_VERSION),
   selectedId: z.string().nullable().catch(null),
   expanded: z.array(z.string()).catch([]),
   showClosed: z.boolean().catch(false),
@@ -74,9 +108,17 @@ export const TabStateSchema = z.object({
   /** The card pane's dragged width in px; null = the default split (clamped on every layout). */
   cardWidth: z.number().positive().nullable().catch(null),
 });
-export type TabState = z.infer<typeof TabStateSchema>;
+
+/**
+ * What a tab remembers, as useTabState reads it: migrated, then checked
+ * field by field — one bad value falls back to its default, the rest stay.
+ * Not strict: unknown keys are cut off.
+ */
+export const TabStateSchema = z.preprocess(migrateTabState, TabStateFields);
+export type TabState = z.infer<typeof TabStateFields>;
 
 export const TAB_DEFAULT: TabState = {
+  v: TAB_STATE_VERSION,
   selectedId: null,
   expanded: [],
   showClosed: false,
@@ -243,6 +285,7 @@ export function reducer(s: UiState, a: Action): UiState {
 /** What goes into the tab: the state minus what lives only while mounted. */
 export function persisted(s: UiState): TabState {
   return {
+    v: TAB_STATE_VERSION,
     selectedId: s.selectedId,
     expanded: s.expanded,
     showClosed: s.showClosed,

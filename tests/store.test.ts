@@ -1,5 +1,7 @@
 /**
- * The panel's pure state (client/ui-state.ts): the card's way back. A link
+ * The panel's pure state (client/ui-state.ts): what a tab remembers — its
+ * version, the way up from older saved states and the fallback field by
+ * field — and the card's way back. A link
  * followed from a card (reveal) puts that card on the back stack, "Back"
  * returns to it, a pick in the tree or on the board and Close start over.
  * No forward, no pinned second card. A narrow tab's "back to the list"
@@ -8,7 +10,7 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { BACK_CAP, TAB_DEFAULT, TabStateSchema, initialUi, reducer, type Action, type UiState } from "../client/ui-state.ts";
+import { BACK_CAP, TAB_DEFAULT, TAB_STATE_VERSION, TabStateSchema, initialUi, migrateTabState, persisted, reducer, type Action, type UiState } from "../client/ui-state.ts";
 
 const run = (s: UiState, ...actions: Action[]) => actions.reduce(reducer, s);
 const link = (id: string): Action => ({ type: "reveal", id, ancestors: [], closed: false });
@@ -83,4 +85,128 @@ test("a narrow tab's way back to the list keeps the issue selected, any pick ope
   assert.equal(reducer(s, { type: "close" }).listShown, false);
   assert.equal(initialUi({ ...TAB_DEFAULT, selectedId: "a" }).listShown, false, "not remembered: a reopened tab shows the card");
   assert.equal("listShown" in TabStateSchema.parse({ ...TAB_DEFAULT, listShown: true }), false, "not part of the tab's state");
+});
+
+// ── what a tab remembers: version, migration, fallback per field ─────
+
+/** A tab saved before versioning (v1): no `v`, the poll interval still in it. */
+const V1 = {
+  selectedId: "pbd-3",
+  expanded: ["pbd-1", "pbd-2"],
+  showClosed: true,
+  sort: { key: "priority", dir: -1 },
+  columns: ["id", "title", "status"],
+  view: "board",
+  filters: { statuses: ["open"], types: [], priorities: [1], labels: [], readiness: ["ready"], createdDays: 30, assignee: "ann" },
+  query: "login",
+  collapsedSections: ["deps"],
+  relSort: { key: "status", dir: 1 },
+  relColumns: ["id", "title"],
+  commentSort: -1,
+  chartsTab: "flow",
+  chartsPeriod: 30,
+  chartsStep: "week",
+  cardWidth: 420,
+  pollMs: 5000,
+};
+
+test("the state a tab saves carries the version, and reads back as itself", () => {
+  assert.equal(TAB_DEFAULT.v, TAB_STATE_VERSION);
+  const ui = run(initialUi(TAB_DEFAULT), { type: "query", query: "x" }, { type: "view", view: "charts" }, { type: "select", id: "a" });
+  const saved = JSON.parse(JSON.stringify(persisted(ui)));
+  assert.equal(saved.v, TAB_STATE_VERSION);
+  assert.deepEqual(TabStateSchema.parse(saved), saved);
+  assert.deepEqual(TabStateSchema.parse(TAB_DEFAULT), TAB_DEFAULT);
+});
+
+test("a v1 tab (no version) opens with every field it had; the poll interval is dropped", () => {
+  const parsed = TabStateSchema.parse(V1) as Record<string, unknown>;
+  const { pollMs: _gone, ...rest } = V1;
+  assert.deepEqual(parsed, { v: TAB_STATE_VERSION, ...rest });
+  assert.equal("pollMs" in parsed, false);
+});
+
+test("an older v1 tab without the later fields gets their defaults", () => {
+  // Before the charts and the splitter: no chartsTab/chartsPeriod/chartsStep, no cardWidth.
+  const { chartsTab: _a, chartsPeriod: _b, chartsStep: _c, cardWidth: _d, ...early } = V1;
+  const parsed = TabStateSchema.parse(early);
+  assert.equal(parsed.query, "login");
+  assert.equal(parsed.view, "board");
+  assert.equal(parsed.chartsTab, TAB_DEFAULT.chartsTab);
+  assert.equal(parsed.chartsPeriod, TAB_DEFAULT.chartsPeriod);
+  assert.equal(parsed.chartsStep, TAB_DEFAULT.chartsStep);
+  assert.equal(parsed.cardWidth, null);
+});
+
+test("an empty state — a copy of the tab opened from + — is the default tab", () => {
+  for (const raw of [undefined, null, {}, "", 0, [], "garbage", 42, true]) {
+    const r = TabStateSchema.safeParse(raw);
+    assert.equal(r.success, true, `${JSON.stringify(raw)} parses`);
+    assert.deepEqual(r.data, TAB_DEFAULT, `${JSON.stringify(raw)} is the default`);
+  }
+});
+
+test("a broken field falls back alone; the others stay", () => {
+  const broken = {
+    ...V1,
+    v: 1,
+    selectedId: 7,
+    expanded: "pbd-1",
+    showClosed: "yes",
+    sort: { key: "no-such-column", dir: 1 },
+    columns: ["bogus", "status"],
+    relColumns: [1, 2],
+    view: "kanban",
+    query: { text: "login" },
+    relSort: null,
+    commentSort: 0,
+    chartsPeriod: 13,
+    chartsStep: "hour",
+    cardWidth: -5,
+  };
+  const parsed = TabStateSchema.parse(broken);
+  assert.equal(parsed.selectedId, null);
+  assert.deepEqual(parsed.expanded, []);
+  assert.equal(parsed.showClosed, false);
+  assert.equal(parsed.sort, null);
+  assert.deepEqual(parsed.columns, ["status", "title"], "unknown columns go, the title column always stays");
+  assert.deepEqual(parsed.relColumns, TAB_DEFAULT.relColumns, "not a list of names: the default columns");
+  assert.equal(parsed.view, "tree");
+  assert.equal(parsed.query, "");
+  assert.deepEqual(parsed.relSort, TAB_DEFAULT.relSort);
+  assert.equal(parsed.commentSort, 1);
+  assert.equal(parsed.chartsPeriod, TAB_DEFAULT.chartsPeriod);
+  assert.equal(parsed.chartsStep, "auto");
+  assert.equal(parsed.cardWidth, null);
+  // Untouched fields survive.
+  assert.deepEqual(parsed.filters, V1.filters);
+  assert.deepEqual(parsed.collapsedSections, ["deps"]);
+  assert.equal(parsed.chartsTab, "flow");
+  assert.equal(parsed.v, TAB_STATE_VERSION);
+});
+
+test("a broken filter falls back alone inside the filters", () => {
+  const parsed = TabStateSchema.parse({ ...V1, filters: { ...V1.filters, priorities: ["high"], readiness: ["someday"], assignee: 5 } });
+  assert.deepEqual(parsed.filters.statuses, ["open"]);
+  assert.equal(parsed.filters.createdDays, 30);
+  assert.deepEqual(parsed.filters.priorities, []);
+  assert.deepEqual(parsed.filters.readiness, []);
+  assert.equal(parsed.filters.assignee, null);
+  assert.deepEqual(TabStateSchema.parse({ ...V1, filters: "none" }).filters, TAB_DEFAULT.filters);
+});
+
+test("a garbage or future version is read field by field, not thrown away", () => {
+  for (const v of ["2", -1, 1.5, null, 99]) {
+    const parsed = TabStateSchema.parse({ ...V1, v });
+    assert.equal(parsed.v, TAB_STATE_VERSION, `v ${JSON.stringify(v)}`);
+    assert.equal(parsed.query, "login", `v ${JSON.stringify(v)}`);
+  }
+});
+
+test("migrateTabState does not touch the state it is given", () => {
+  const raw = { ...V1 };
+  const up = migrateTabState(raw);
+  assert.equal("pollMs" in raw, true);
+  assert.equal("pollMs" in up, false);
+  assert.equal(up.v, TAB_STATE_VERSION);
 });
