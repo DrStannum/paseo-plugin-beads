@@ -219,6 +219,8 @@ list is scrolled where it was, sideways on the board too. The board narrows its
 lanes so one and a hint of the next fit, and is swiped sideways. The splitter is
 hidden there.
 
+![A narrow tab: a card reached through a link fills the tab, with Back to the card it came from and the cross to the list](../tests/preview-narrow-back-en.png)
+
 **Card width.** On the web and in the desktop app there is a splitter between the
 list and the card: drag it to give the card more room; a double click restores the
 default proportions. The list always keeps at least 340 px.
@@ -279,6 +281,8 @@ read two cards side by side, open a second Beads tab from the "+" menu and split
 it beside the first: tabs and splits belong to Paseo, not to the panel.
 
 ![A card with its children as a sortable table, a progress bar over their statuses and the comment thread](../tests/preview-links-dark-en.png)
+
+![Two Beads tabs split side by side, a card in each](../tests/preview-split-dark-en.png)
 
 **Comments** are append-only, because beads is: `bd` offers `bd comment` (add) and
 `bd comments` (list) and nothing to edit or delete one. The panel therefore reads
