@@ -7,7 +7,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-  activeChips, buildIndex, cardPaneWidth, CARD_MIN_W, filterOptions, flattenTree, hitsFor, NO_FILTERS, pruneLabels,
+  activeChips, buildIndex, cardPaneWidth, CARD_MIN_W, filterOptions, firstRows, flattenTree, hitsFor, NO_FILTERS, pruneLabels,
   removeChip, toggleValue, TREE_MIN_W, visibility, type Filters,
 } from "../shared/tree.ts";
 import type { TreeRow } from "../shared/types.ts";
@@ -59,6 +59,13 @@ test("server hits join only the query they answer (no flash of the previous quer
   assert.ok(on.nodes.some((n) => n.id === target.id));
   const off = flattenTree(index, visibility(index, { showClosed: false, filters: NO_FILTERS, query: "zzqqx", searchIds: hitsFor(fake, "zzqqx") }), new Set(), null, true);
   assert.equal(off.visible, 0);
+});
+
+test("first commit of the tree: the rows the window can show, 10 to 40", () => {
+  assert.equal(firstRows(800, 32), 26);
+  assert.equal(firstRows(200, 32), 10);
+  assert.equal(firstRows(2160, 32), 40);
+  assert.equal(firstRows(0, 32), 40); // unknown: the old fixed batch
 });
 
 test("card width: 45% capped at 640 untouched, a dragged width clamped to both minimums", () => {

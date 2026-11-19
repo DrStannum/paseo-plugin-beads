@@ -613,6 +613,19 @@ export function hitsFor(hits: SearchHits | null, query: string): ReadonlySet<str
 export const SEARCH_MIN = 2;
 export const SEARCH_DEBOUNCE_MS = 220;
 
+// ── the list's first commit ──────────────────────────────────────────
+
+/**
+ * Rows the tree renders in its first commit: what a window `windowH` px tall
+ * can show (plus one), between 10 and 40. On web each row costs a few ms, so
+ * more only delays the first frame; the list renders the rest in batches
+ * after it.
+ */
+export function firstRows(windowH: number, rowH: number): number {
+  if (!(windowH > 0)) return 40;
+  return Math.max(10, Math.min(40, Math.ceil(windowH / rowH) + 1));
+}
+
 // ── the card pane's width ────────────────────────────────────────────
 
 /** Card pane limits (reference CARD_MIN_W / TREE_MIN_W) and the untouched split. */

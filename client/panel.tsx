@@ -19,7 +19,7 @@
 
 import type { PluginWorkspacePanelProps } from "@getpaseo/plugin/client";
 import { useEffect, useMemo, useState } from "react";
-import { View } from "react-native";
+import { View, type LayoutChangeEvent } from "react-native";
 import { cardPaneWidth, filterOptions, flattenTree, parentIds, pruneLabels, toggleValue, visibility } from "../shared/tree.ts";
 import { BeadsProvider, useBeads } from "./beads.tsx";
 import { CardPane, type CardSlots } from "./card.tsx";
@@ -69,6 +69,15 @@ const CARD_SLOTS: CardSlots = {
   notices: (card) => <CardNotices card={card} />,
   commentBox: (card) => <CommentBox card={card} />,
 };
+
+/**
+ * A hidden tab lays out at 0 (display: none): the last real width stays, so
+ * coming back to the tab re-renders nothing (the tree keeps its rows too).
+ */
+function keepWidth(e: LayoutChangeEvent, set: (w: number) => void) {
+  const w = Math.round(e.nativeEvent.layout.width);
+  if (w > 0) set(w);
+}
 
 function Body({ compactHost }: { compactHost: boolean }) {
   const { pal, t, data, index, search } = useBeads();
@@ -147,7 +156,7 @@ function Body({ compactHost }: { compactHost: boolean }) {
   const cardW = shared ? cardPaneWidth(dragW ?? ui.cardWidth, shared) : 320;
 
   return (
-    <View testID="beads-panel" style={{ flex: 1, backgroundColor: pal.bg }} onLayout={(e) => setWidth(Math.round(e.nativeEvent.layout.width))}>
+    <View testID="beads-panel" style={{ flex: 1, backgroundColor: pal.bg }} onLayout={(e) => keepWidth(e, setWidth)}>
       <Header
         shown={flat ? flat.visible : null}
         slots={headerSlots}

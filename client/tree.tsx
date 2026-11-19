@@ -6,8 +6,8 @@
 
 import { FlatList } from "@getpaseo/plugin/client/ui";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
-import { Pressable, ScrollView, Text, View, type FlatList as RNFlatList, type LayoutChangeEvent, type NativeScrollEvent, type NativeSyntheticEvent } from "react-native";
-import { COLUMNS, nextSort, type ColumnDef, type FlatNode, type Sort } from "../shared/tree.ts";
+import { Dimensions, Pressable, ScrollView, Text, View, type FlatList as RNFlatList, type LayoutChangeEvent, type NativeScrollEvent, type NativeSyntheticEvent } from "react-native";
+import { COLUMNS, firstRows, nextSort, type ColumnDef, type FlatNode, type Sort } from "../shared/tree.ts";
 import { useBeads } from "./beads.tsx";
 import { FLASH_MS } from "./data.ts";
 import { columnLabel, fmtDate, fmtDateShort, priorityTitle, statusLabel, stringOf, typeLabel } from "./format.ts";
@@ -279,7 +279,12 @@ export function Tree({ nodes, empty }: TreeProps) {
   }, [ui.reveal, nodes, viewH]);
 
   const width = Math.max(paneW, minWidth);
-  const onLayout = (e: LayoutChangeEvent) => setPaneW(Math.round(e.nativeEvent.layout.width));
+  // A hidden tab lays out at 0 (display: none). Keep the last size: at 0 the
+  // list would unmount, and every row mount again on the way back.
+  const onLayout = (e: LayoutChangeEvent) => {
+    const w = Math.round(e.nativeEvent.layout.width);
+    if (w > 0) setPaneW(w);
+  };
   return (
     <View style={{ flex: 1, minWidth: 0 }} onLayout={onLayout}>
       {paneW > 0 ? (
@@ -293,12 +298,15 @@ export function Tree({ nodes, empty }: TreeProps) {
                 data={nodes}
                 keyExtractor={(n) => n.id}
                 getItemLayout={(_, i) => ({ length: ROW_H, offset: ROW_H * i, index: i })}
-                initialNumToRender={40}
+                initialNumToRender={firstRows(Dimensions.get("window").height, ROW_H)}
                 maxToRenderPerBatch={40}
                 windowSize={9}
                 style={{ flex: 1 }}
                 contentContainerStyle={{ paddingVertical: 6 }}
-                onLayout={(e) => setViewH(Math.round(e.nativeEvent.layout.height))}
+                onLayout={(e) => {
+                  const h = Math.round(e.nativeEvent.layout.height);
+                  if (h > 0) setViewH(h);
+                }}
                 onScroll={(e: NativeSyntheticEvent<NativeScrollEvent>) => {
                   scrollY.current = e.nativeEvent.contentOffset.y;
                 }}
