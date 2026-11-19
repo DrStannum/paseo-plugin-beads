@@ -17,6 +17,7 @@
  *   preview-board-more-en           a lane past BOARD_PAGE: "N more" under it
  *   preview-board-jsonl-en          the jsonl export only: the same board, no drag
  *   preview-board-narrow-ru         under 900 px: 220 px lanes, swiped sideways
+ *                                  (checked: a pressed card takes the board's place, "Board" leads back)
  *
  * Writes tests/<frame>.png. Look at them before committing.
  * Needs the local Paseo daemon (127.0.0.1:6767) with the beads plugin loaded.
@@ -123,9 +124,30 @@ try {
           assert.equal(Math.round(lane.width), 220, 'narrow lanes are 220 px');
           checks.push('narrow lanes are 220 px wide');
           files.push(await shot(page, 'preview-board-narrow-ru', { panel }));
+          // Swipe the lanes a little: the way back must find them where they were.
+          const scrollLeft = (/** @type {number | null} */ to) => panel.locator(sel('beads-lane-open')).evaluate((/** @type {any} */ el, /** @type {number | null} */ v) => {
+            let n = el.parentElement;
+            while (n && !(n.scrollWidth > n.clientWidth + 4 && getComputedStyle(n).overflowX !== 'visible')) n = n.parentElement;
+            if (!n) return -1;
+            if (v != null) n.scrollLeft = v;
+            return n.scrollLeft;
+          }, to);
+          const left = await scrollLeft(120);
+          assert.ok(left > 0, 'narrow lanes scroll sideways');
+          await page.waitForTimeout(200);
           await panel.locator(sel('beads-bcard-demo-a1.2')).click();
-          await panel.locator(sel('beads-card-overlay')).waitFor({ timeout: 30_000 });
-          checks.push('narrow: a pressed card opens as the overlay');
+          await panel.locator(sel('beads-card-title')).waitFor({ timeout: 30_000 });
+          assert.equal(await panel.locator(sel('beads-lane-open')).isVisible(), false, 'the card takes the board\'s place');
+          assert.equal(await panel.locator(sel('beads-card-overlay')).count(), 0, 'no overlay');
+          checks.push('narrow: a pressed card opens in the board\'s place');
+          await panel.locator(sel('beads-card-back-list')).click();
+          await panel.locator(sel('beads-lane-open')).waitFor({ state: 'visible', timeout: 10_000 });
+          await page.mouse.move(0, 0);
+          // The selected style (RN-web puts no aria-selected on a button): not a plain card's background.
+          const bg = (/** @type {string} */ id) => panel.locator(sel(id)).evaluate((/** @type {any} */ e) => getComputedStyle(e).backgroundColor);
+          assert.notEqual(await bg('beads-bcard-demo-a1.2'), await bg(`beads-bcard-${DRAGGED}`), 'the card stays selected');
+          assert.equal(await scrollLeft(null), left, 'the lanes keep their sideways scroll');
+          checks.push('narrow: "Board" leads back to the board, the card stays selected, the lanes where they were');
         });
       }
       if (want('preview-board-drag-en') || want('preview-board-dropped-en')) {

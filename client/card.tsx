@@ -65,6 +65,12 @@ function SecLabel({ pal, text }: { pal: Palette; text: string }) {
  * The card pane. "Back" shows only after a link was followed from a card and
  * returns to it; there is no forward, no pin, no second card — a reader who
  * wants two cards side by side has Paseo's own tabs and splits.
+ *
+ * `compact`: the card is the whole screen of a narrow tab (client/panel.tsx),
+ * the list is behind it. Then the first button always leads back: to the
+ * previous card while there is one, else to the list (the tree or the board,
+ * named by the view). Going to the list keeps the issue selected (`toList`),
+ * so the X only shows as the short way to the list out of a chain of links.
  */
 export function CardPane({ id, compact, slots }: { id: string | null; compact: boolean; slots: CardSlots }) {
   const b = useBeads();
@@ -86,7 +92,18 @@ export function CardPane({ id, compact, slots }: { id: string | null; compact: b
   return (
     <View testID="beads-card" style={{ flex: 1, minWidth: 0 }}>
       <View style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 14, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: pal.border }}>
-        {ui.backStack.length ? <Btn pal={pal} icon="ChevronLeft" title={t.back} testID="beads-card-back" onPress={() => dispatch({ type: "back" })} /> : null}
+        {ui.backStack.length ? (
+          <Btn pal={pal} icon="ChevronLeft" title={t.back} testID="beads-card-back" onPress={() => dispatch({ type: "back" })} />
+        ) : compact ? (
+          <Btn
+            pal={pal}
+            icon="ChevronLeft"
+            label={ui.view === "board" ? t.viewBoard : t.viewTree}
+            title={ui.view === "board" ? t.backToBoard : t.backToList}
+            testID="beads-card-back-list"
+            onPress={() => dispatch({ type: "toList" })}
+          />
+        ) : null}
         <View style={{ flex: 1 }} />
         {card && cached?.note ? (
           <View
@@ -97,7 +114,9 @@ export function CardPane({ id, compact, slots }: { id: string | null; compact: b
           </View>
         ) : null}
         {slots.headerActions?.(card)}
-        <Btn pal={pal} icon="X" title={t.close} testID="beads-card-close" onPress={() => dispatch({ type: "close" })} />
+        {compact && !ui.backStack.length ? null : (
+          <Btn pal={pal} icon="X" title={compact ? (ui.view === "board" ? t.backToBoard : t.backToList) : t.close} testID="beads-card-close" onPress={() => dispatch({ type: compact ? "toList" : "close" })} />
+        )}
       </View>
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: compact ? 14 : 16, paddingTop: 14, paddingBottom: 28 }}>
         {card ? (

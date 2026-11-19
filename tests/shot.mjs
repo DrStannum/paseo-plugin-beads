@@ -15,8 +15,9 @@
  *   preview-refreshing-en          rows held while newer ones load: "Refreshing…" in the title row
  *                                  (the page holds back its beads.tree request, so it stays on)
  *   preview-empty-<locale>         a workspace with no .beads at all
- *   preview-narrow-tree-en         a pane under 900 px: the tree alone
- *   preview-narrow-card-ru         …and the card as a full overlay
+ *   preview-narrow-tree-en         a tab under 900 px: the tree alone
+ *   preview-narrow-card-ru         …a picked issue: its card in the tree's place, "Tree" leads back
+ *                                  (checked: the list comes back with its selection and scroll)
  *   preview-filters-dark-en        the filter panel open, two chips on
  *   preview-labels-light-ru        the tag picker open over the panel
  *   preview-chips-light-en         filters applied: badge, removable chips
@@ -31,6 +32,7 @@
  * each fixture workspace is registered only for the run and removed afterwards.
  */
 
+import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { FIXTURE } from './fixture/build.mjs';
@@ -60,6 +62,50 @@ const LAYOUT_FRAMES = [
   'preview-filters-dark-en', 'preview-labels-light-ru', 'preview-chips-light-en', 'preview-search-dark-en', 'preview-search-key-en',
   'preview-columns-light-en', 'preview-link-cols-dark-en', 'preview-splitter-dark-en',
 ];
+
+/** The selected style (RN-web puts no aria-selected on a button): its background is not a plain row's. */
+async function looksSelected(/** @type {any} */ row, /** @type {any} */ plain) {
+  const bg = (/** @type {any} */ l) => l.evaluate((/** @type {any} */ e) => getComputedStyle(e).backgroundColor);
+  return (await bg(row)) !== (await bg(plain));
+}
+
+/**
+ * A narrow tab's list → card → back: "back to the list" shows the tree again
+ * with the issue still selected, scrolled where it was (the list stays
+ * mounted under the card). The window is made short so the list scrolls.
+ */
+async function narrowWayBack(/** @type {any} */ page, /** @type {any} */ panel) {
+  const tree = panel.locator('[data-testid="beads-tree"]');
+  const row = (/** @type {string} */ id) => panel.locator(`[data-testid="beads-row-${id}"]`);
+  await panel.locator('[data-testid="beads-card-back-list"]').click();
+  await tree.waitFor({ state: 'visible', timeout: 10_000 });
+  await page.mouse.move(0, 0);
+  assert.ok(await looksSelected(row(FIXTURE.selected), row(FIXTURE.expanded[0])), 'back to the list keeps the selection');
+  await page.setViewportSize({ width: 820, height: 480 });
+  await page.waitForTimeout(400);
+  /** The list's scrolling box: the FlatList's node or the first scrollable one inside it. */
+  const scrollTop = (/** @type {number | null} */ set) => tree.evaluate((/** @type {any} */ el, /** @type {number | null} */ to) => {
+    const box = [el, ...el.querySelectorAll('*')].find((n) => n.scrollHeight > n.clientHeight + 4 && getComputedStyle(n).overflowY !== 'visible');
+    if (!box) return -1;
+    if (to != null) box.scrollTop = to;
+    return box.scrollTop;
+  }, set);
+  const top = await scrollTop(10_000);
+  assert.ok(top > 0, 'the list scrolls in a short window');
+  await page.waitForTimeout(300);
+  const last = panel.locator('[data-testid^="beads-row-"]').last();
+  const id = (await last.getAttribute('data-testid')).replace('beads-row-', '');
+  await last.click();
+  await panel.locator('[data-testid="beads-card-title"]').waitFor({ timeout: 30_000 });
+  assert.equal(await tree.isVisible(), false);
+  await panel.locator('[data-testid="beads-card-back-list"]').click();
+  await tree.waitFor({ state: 'visible', timeout: 10_000 });
+  await page.waitForTimeout(300);
+  assert.equal(await scrollTop(null), top, 'back to the list keeps its scroll');
+  await page.mouse.move(0, 0);
+  assert.ok(await looksSelected(row(id), row(FIXTURE.expanded[0])), 'the row picked last is still selected');
+  console.log('  narrow: card in the list\'s place, back to the list keeps the selection and the scroll');
+}
 
 /** Click by test id inside the panel. */
 const tap = (/** @type {any} */ panel, /** @type {string} */ id) => panel.locator(`[data-testid="${id}"]`).first().click();
@@ -194,7 +240,7 @@ try {
           files.push(await shot(page, name, { panel }));
         });
       }
-      // Under NARROW_PX but still Paseo's desktop layout (its phone layout has no tab strip to drive).
+      // Under NARROW_PX (the tab's own width) but still Paseo's desktop layout (its phone layout has no tab strip to drive).
       const viewport = { width: 820, height: 860 };
       if (want('preview-narrow-tree-en')) {
         await withPanel({ workspace, theme: 'dark', locale: 'en', viewport, ready }, async ({ page, panel }) => {
@@ -205,7 +251,11 @@ try {
       if (want('preview-narrow-card-ru')) {
         await withPanel({ workspace, theme: 'light', locale: 'ru', viewport, ready }, async ({ page, panel }) => {
           await openFixture(panel);
+          const tree = panel.locator('[data-testid="beads-tree"]');
+          assert.equal(await tree.isVisible(), false, 'narrow: the card takes the list\'s place');
+          assert.equal(await panel.locator('[data-testid="beads-card-overlay"]').count(), 0, 'no overlay');
           files.push(await shot(page, 'preview-narrow-card-ru', { panel }));
+          await narrowWayBack(page, panel);
         });
       }
     });

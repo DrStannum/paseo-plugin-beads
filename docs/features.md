@@ -168,11 +168,12 @@ ellipsis.
 
 ![The column panel open](../tests/preview-columns-light-en.png)
 
-**On a narrow pane** (below 900 px, or whenever Paseo reports a compact layout, as
-it does on a phone) the panel becomes one column: the card opens as an overlay
-over the whole panel, and while no issue is selected there is no overlay at all.
-The board narrows its lanes so one and a hint of the next fit, and is swiped
-sideways. The splitter is hidden there.
+**In a narrow tab** (below 900 px, or whenever Paseo reports a compact layout, as
+it does on a phone) the panel becomes one column: first the list, then a picked
+issue's card in its place across the whole tab, with a button back to the tree
+or the board. Back at the list, the issue is still selected and the list is
+scrolled where it was. The board narrows its lanes so one and a hint of the next
+fit, and is swiped sideways. The splitter is hidden there.
 
 **Card width.** On the web and in the desktop app there is a splitter between the
 list and the card: drag it to give the card more room; a double click restores the

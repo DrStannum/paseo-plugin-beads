@@ -46,9 +46,9 @@ on this page, and the test suite checks that it stays that way.
 | | |
 |---|---|
 | ![](../tests/preview-splitter-dark-en.png) | ![](../tests/preview-narrow-tree-en.png) |
-| The card pane dragged wider with the splitter | A pane under 900 px: the tree alone |
+| The card pane dragged wider with the splitter | A tab under 900 px: the tree alone |
 | ![](../tests/preview-narrow-card-ru.png) | |
-| …and the card as an overlay over the whole panel | |
+| …a picked issue: its card in the tree's place, "Tree" leads back | |
 
 ## The board
 
@@ -66,7 +66,7 @@ count in a lane header is the whole lane, not the cards drawn in it.
 | ![](../tests/preview-board-drag-en.png) | ![](../tests/preview-board-dropped-en.png) |
 | Mid-drag: the card under the pointer, the target lane lit | After the drop: the card in its new lane, the status written by bd |
 | ![](../tests/preview-board-jsonl-en.png) | ![](../tests/preview-board-narrow-ru.png) |
-| jsonl mode: the same board, nothing moves | A narrow pane: narrower lanes, swiped sideways |
+| jsonl mode: the same board, nothing moves | A narrow tab: narrower lanes, swiped sideways |
 
 ## Charts: breakdowns
 

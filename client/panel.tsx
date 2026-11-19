@@ -1,7 +1,10 @@
 /**
- * The beads workspace panel: header, then the tree on the left and the card
- * on the right. Below NARROW_PX (or on a compact host layout) the card opens
- * as a full overlay over the tree instead.
+ * The beads workspace panel: one screen of a Paseo tab. Wide, it is the
+ * header, then the tree (or the board) on the left and the card on the right
+ * with a handle between them. Narrow — the tab's own width under NARROW_PX,
+ * or Paseo's compact (phone) layout — it is plain list → card → back: the
+ * list alone, a picked issue's card in its place across the whole tab, the
+ * card's first button back to the list. Nothing is drawn over anything.
  *
  * This file only composes. Where later features plug in:
  * - HeaderSlots (client/header.tsx): Sync, settings, search, filters,
@@ -13,6 +16,9 @@
  *   take the place of the tree + card pair.
  * - The card pane: a dragged width (client/splitter.tsx, web) clamped by
  *   cardPaneWidth(), else the reference's 55/45 split; a fixed share on native.
+ *   The splitter stays: it resizes two parts of one screen, like a split in
+ *   any list/detail view, and imitates no window — Paseo's own splits are
+ *   between tabs. It only exists in the wide layout.
  *
  * The panel draws one screen of a Paseo tab and imitates no windows: a second
  * card side by side is a second tab or a split, which Paseo owns.
@@ -38,7 +44,14 @@ import { OpenSettingsContext, useBeadsSettings } from "./settings.tsx";
 import { AssignMe, CardHeaderActions, CardNotices, CommentBox, ExportBadge, NewIssueButton, SettingsButton, StatusControl, SyncButton } from "./write-controls.tsx";
 import { WritesProvider } from "./writes.tsx";
 
-/** Beyond this the panel is one column and the card is an overlay. */
+/**
+ * Under this width the tab is one column: the list, or a card in its place.
+ * The tree needs TREE_MIN_W and the card CARD_MIN_W plus the handle and the
+ * padding (~720 px) just to fit; at 900 the default split still leaves the
+ * tree ~460 px, enough for the title beside tags, readiness and status.
+ * Measured on the tab itself (onLayout): `layout.compact` is the window's
+ * breakpoint (< 600 px), not the tab's, so it only adds "surely narrow".
+ */
 export const NARROW_PX = 900;
 
 /** `openSettings` opens the plugin's page in Paseo's Settings (index.client.tsx passes it). */
@@ -149,6 +162,12 @@ function Body({ compactHost }: { compactHost: boolean }) {
   const hasCard = Boolean(ui.selectedId) && Boolean(tree);
   const board = ui.view === "board";
   const charts = ui.view === "charts";
+  /**
+   * A narrow tab showing a card in place of the list. The list stays mounted
+   * under display:none, so its scroll survives the way back; "back to the
+   * list" (`toList`) keeps the issue selected.
+   */
+  const cardScreen = narrow && hasCard && !charts && !ui.listShown;
   const pane = { borderWidth: 1, borderColor: pal.border, borderRadius: 10, backgroundColor: pal.card, overflow: "hidden" as const };
   const pad = narrow ? 10 : 18;
   // What the tree and the card split between them; the handle takes the gap.
@@ -161,6 +180,7 @@ function Body({ compactHost }: { compactHost: boolean }) {
         shown={flat ? flat.visible : null}
         slots={headerSlots}
         compact={narrow}
+        toolbar={!cardScreen}
         onExpandAll={() => index && dispatch({ type: "setExpanded", ids: parentIds(index) })}
         onCollapseAll={() => dispatch({ type: "setExpanded", ids: [] })}
       />
@@ -174,13 +194,18 @@ function Body({ compactHost }: { compactHost: boolean }) {
           </View>
         ) : (
           <>
-            <View testID={board ? "beads-view-board" : undefined} style={[pane, { flex: 1, minWidth: 0 }]}>
+            <View testID={board ? "beads-view-board" : undefined} style={[pane, { flex: 1, minWidth: 0 }, cardScreen ? { display: "none" } : null]}>
               {board ? (
                 <BoardView passes={passes ?? NONE} compact={narrow} />
               ) : (
                 <Tree nodes={flat?.nodes ?? []} empty={empty} />
               )}
             </View>
+            {cardScreen ? (
+              <View testID="beads-card-pane" style={[pane, { flex: 1, minWidth: 0 }]}>
+                <CardPane id={ui.selectedId} compact slots={cardSlots} />
+              </View>
+            ) : null}
             {/* With nothing picked the board takes the whole width (reference .cbd-board-view:not(.cbd-has-card)). */}
             {narrow || (board && !hasCard) ? null : (
               <>
@@ -206,11 +231,6 @@ function Body({ compactHost }: { compactHost: boolean }) {
           </>
         )}
       </View>
-      {narrow && hasCard && !charts ? (
-        <View testID="beads-card-overlay" style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: pal.card, zIndex: 100 }}>
-          <CardPane id={ui.selectedId} compact slots={cardSlots} />
-        </View>
-      ) : null}
     </View>
   );
 }

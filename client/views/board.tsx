@@ -2,7 +2,8 @@
  * The board view (reference renderBoard / boardColumn / boardCard and the
  * drag code): the rows the tree would show, one lane per status, sorted by
  * the tree's comparator. Pressing a card selects it, and the panel opens the
- * card beside the board (client/panel.tsx).
+ * card beside the board — or, in a narrow tab, in the board's place with a
+ * way back to it (client/panel.tsx).
  *
  * Changing a status from here:
  * - web, bd mode: drag a card into another lane. Pointer events on the DOM

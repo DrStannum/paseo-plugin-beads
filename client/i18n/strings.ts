@@ -325,6 +325,8 @@ const en = {
   cardFailed: 'Could not load this issue',
   close: 'Close',
   back: 'Back',
+  backToList: 'Back to the list',
+  backToBoard: 'Back to the board',
 
   fDescription: 'Description',
   fDesign: 'Design',
@@ -748,6 +750,8 @@ const ru: Strings = {
   cardFailed: 'Не удалось загрузить задачу',
   close: 'Закрыть',
   back: 'Назад',
+  backToList: 'Назад к списку',
+  backToBoard: 'Назад к доске',
 
   fDescription: 'Описание',
   fDesign: 'Дизайн',

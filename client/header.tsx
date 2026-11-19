@@ -39,7 +39,12 @@ export interface HeaderSlots {
   below?: ReactNode;
 }
 
-export function Header({ shown, slots, onExpandAll, onCollapseAll, compact }: { shown: number | null; slots: HeaderSlots; onExpandAll: () => void; onCollapseAll: () => void; compact: boolean }) {
+/**
+ * `toolbar: false` — a narrow tab is showing a card in place of the list: the
+ * title, counts and the stale strip stay, the list's toolbar (search, filters,
+ * view switch, New issue) and what opens under it come back with the list.
+ */
+export function Header({ shown, slots, onExpandAll, onCollapseAll, compact, toolbar = true }: { shown: number | null; slots: HeaderSlots; onExpandAll: () => void; onCollapseAll: () => void; compact: boolean; toolbar?: boolean }) {
   const { pal, t, data, workspaceId } = useBeads();
   const { ui, dispatch } = useStore();
   const [pollMs, setPollMs] = usePollMs();
@@ -92,7 +97,7 @@ export function Header({ shown, slots, onExpandAll, onCollapseAll, compact }: { 
       </View>
       <StatLine shown={shown} />
       <StaleBar />
-      {hasRows ? (
+      {hasRows && toolbar ? (
         <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginTop: 4, flexWrap: "wrap", zIndex: 5 }}>
           {slots.toolbarStart}
           <View style={{ flex: 1 }} />
@@ -113,7 +118,7 @@ export function Header({ shown, slots, onExpandAll, onCollapseAll, compact }: { 
           {slots.toolbarEnd}
         </View>
       ) : null}
-      {slots.below}
+      {toolbar ? slots.below : null}
     </View>
   );
 }

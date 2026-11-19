@@ -2,7 +2,8 @@
  * The panel's pure state (client/ui-state.ts): the card's way back. A link
  * followed from a card (reveal) puts that card on the back stack, "Back"
  * returns to it, a pick in the tree or on the board and Close start over.
- * No forward, no pinned second card.
+ * No forward, no pinned second card. A narrow tab's "back to the list"
+ * (toList) puts the card away and keeps the selection.
  */
 
 import assert from "node:assert/strict";
@@ -68,4 +69,18 @@ test("a tab saved with the old two-card fields still opens: they are dropped, th
   assert.equal(parsed.selectedId, "a");
   assert.equal(parsed.query, "x");
   for (const key of ["focusId", "history", "historyPos"]) assert.equal(key in parsed, false, key);
+});
+
+test("a narrow tab's way back to the list keeps the issue selected, any pick opens a card again", () => {
+  const s = run(initialUi(TAB_DEFAULT), { type: "select", id: "a" }, link("b"), { type: "toList" });
+  assert.equal(s.listShown, true);
+  assert.equal(s.selectedId, "b", "the issue stays selected (highlighted in the list)");
+  assert.deepEqual(s.backStack, [], "the chain of links is left behind with the card");
+  assert.deepEqual(s.reveal?.id, "b", "the list scrolls the selected issue into view if it is off screen");
+  assert.equal(reducer(s, { type: "select", id: "b" }).listShown, false, "picking the same row again opens its card");
+  assert.equal(reducer(s, { type: "select", id: "c" }).listShown, false);
+  assert.equal(reducer(s, link("c")).listShown, false);
+  assert.equal(reducer(s, { type: "close" }).listShown, false);
+  assert.equal(initialUi({ ...TAB_DEFAULT, selectedId: "a" }).listShown, false, "not remembered: a reopened tab shows the card");
+  assert.equal("listShown" in TabStateSchema.parse({ ...TAB_DEFAULT, listShown: true }), false, "not part of the tab's state");
 });

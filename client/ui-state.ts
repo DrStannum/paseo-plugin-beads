@@ -101,6 +101,13 @@ export interface UiState extends TabState, ChartsLive {
    * Windows, splits and a second card are Paseo's tabs, not the panel's.
    */
   backStack: string[];
+  /**
+   * A narrow tab went back from the card to the list (client/panel.tsx): the
+   * issue stays selected — highlighted, the list scrolled where it was — and
+   * only its card is put away. Any pick opens a card again; the wide layout,
+   * with the card beside the list, ignores it. Not remembered.
+   */
+  listShown: boolean;
   /** Branches open in a card's children list. */
   relExpanded: string[];
   /** Bumped when an issue should be scrolled into view in the tree. */
@@ -133,6 +140,8 @@ export type Action =
   | { type: "cardWidth"; width: number | null }
   /** Close the card (back to the bare tree / board). */
   | { type: "close" }
+  /** A narrow tab's "back to the list": put the card away, keep the selection. */
+  | { type: "toList" }
   | { type: "toggleSection"; key: string }
   | { type: "relSort"; sort: Sort }
   | { type: "relColumns"; columns: string[] }
@@ -158,11 +167,11 @@ export function reducer(s: UiState, a: Action): UiState {
   if (isChartsAction(a)) return chartsReducer(s, a);
   switch (a.type) {
     case "select":
-      return { ...s, selectedId: a.id, backStack: [] };
+      return { ...s, selectedId: a.id, backStack: [], listShown: false };
     case "back": {
       if (!s.backStack.length) return s;
       const backStack = s.backStack.slice(0, -1);
-      return { ...s, selectedId: s.backStack[s.backStack.length - 1]!, backStack };
+      return { ...s, selectedId: s.backStack[s.backStack.length - 1]!, backStack, listShown: false };
     }
     case "toggleExpanded":
       return { ...s, expanded: toggle(s.expanded, a.id) };
@@ -176,6 +185,7 @@ export function reducer(s: UiState, a: Action): UiState {
         showClosed: s.showClosed || a.closed,
         selectedId: a.id,
         backStack: pushBack(s, a.id),
+        listShown: false,
         reveal: { id: a.id, seq: (s.reveal?.seq ?? 0) + 1 },
       };
     }
@@ -199,7 +209,16 @@ export function reducer(s: UiState, a: Action): UiState {
     case "cardWidth":
       return { ...s, cardWidth: a.width == null ? null : Math.round(a.width) };
     case "close":
-      return { ...s, selectedId: null, backStack: [] };
+      return { ...s, selectedId: null, backStack: [], listShown: false };
+    case "toList":
+      // The list was hidden while links were followed: scroll the issue now
+      // selected into view (the tree only scrolls if it is off screen).
+      return {
+        ...s,
+        backStack: [],
+        listShown: true,
+        reveal: s.selectedId ? { id: s.selectedId, seq: (s.reveal?.seq ?? 0) + 1 } : s.reveal,
+      };
     case "toggleSection":
       return { ...s, collapsedSections: toggle(s.collapsedSections, a.key) };
     case "relSort":
@@ -246,6 +265,7 @@ export function initialUi(t: TabState): UiState {
   return {
     ...t,
     backStack: [],
+    listShown: false,
     relExpanded: [],
     ...CHARTS_LIVE_INIT,
     reveal: t.selectedId ? { id: t.selectedId, seq: 1 } : null,
