@@ -62,12 +62,21 @@ never handed out or has forgotten, more than max(50, 20%) of the rows moved, or 
 stale answer — it is the full set as before. The server keeps, per project, a
 short hash of every row for the last 8 revisions it answered with, and for the
 disk copy a restarted plugin read back, so a delta works across a plugin reload
-too. Nothing in it is issue text, and none of it is logged.
+too. Nothing in it is issue text, and none of it is logged. The panel always
+asks with `deltas` (the reload after a write too, so its answer becomes the next
+base) and lays a delta only over the revision it was cut from; on any other one it
+asks again in full.
 
 **The panel keeps what it has.** The last good tree of each workspace and the
 cards opened in it stay in the client's memory (react-query's cache, up to eight
 workspaces), so reopening the panel or switching back draws the list at once and
-checks in the background. Only memory: nothing goes to storage, because issue
+checks in the background. That cache is one per plugin installation in Paseo,
+shared by every Beads tab, a copy in the explorer and every workspace of the host;
+a tree in it counts as fresh until the revision moves, so a second tab of the same
+workspace shows the rows without asking for them. The revision poll runs once per
+workspace however many copies are mounted (Paseo keeps hidden tabs mounted), stops
+with the last one, and looks at once when the panel comes back after nobody showed
+the workspace. Only memory: nothing goes to storage, because issue
 text can carry secrets. A failed refresh never empties the list: the rows stay
 under a "Data may be out of date" strip with the reason and a **Retry** button; a
 card whose reload failed stays up marked "May be out of date". Each failed poll

@@ -1,22 +1,28 @@
 /**
  * The panel's data layer: the issue tree and the cards of one workspace, kept
- * in react-query's cache (shared by every plugin, so every key starts with
- * ["beads", hostId, workspaceId]).
+ * in react-query's cache — the plugin installation's QueryClient, shared by
+ * every tab, explorer copy and workspace of the host (keys start with
+ * ["beads", hostId, workspaceId] all the same).
  *
  * Port of the reference's loading code (cloudcli-plugin-beads, dist/index.js:
  * loadTree/runTree, checkRevision, schedule, projectCache, loadCard,
  * revalidateOpenCards):
  *
- * - The tree is fetched once, then a cheap beads.revision is polled on the
- *   reader's interval; only a moved revision fetches the tree again, and then
- *   with `have`, so an unchanged project answers in a few bytes.
+ * - The tree is fetched once and stays fresh until a cheap beads.revision,
+ *   polled on the reader's interval, says it moved; only then is the tree
+ *   asked again, with `have` and `deltas`, so a moved project answers with
+ *   the rows that changed and an unchanged one in a few bytes.
+ * - One poller per workspace (client/poller.ts), however many copies of the
+ *   panel are mounted (hidden tabs stay mounted and would each poll); the
+ *   last copy to unmount stops it.
  * - Failed rounds back off: base · 2^failures, capped at max(base, 5 min).
  * - Last good wins: a failed refresh never wipes the rows on screen. It sets
  *   `loadIssue` (the stale bar) instead; the empty state is only for a
  *   workspace that never loaded.
  * - Coming back is instant: the last tree per workspace stays in the cache
- *   between mounts (CACHE_PROJECTS workspaces), and a remount revalidates it
- *   in the background with `have`.
+ *   between mounts (CACHE_PROJECTS workspaces, never evicting one still
+ *   shown); a remount draws it and fetches nothing, and a poller that starts
+ *   over held data checks the revision at once.
  * - Cards are cached by id with the revision they were read at, shown at once
  *   when seen before, and refetched in the background when the tree moves.
  *
@@ -32,9 +38,10 @@ import { issueRpc, revisionRpc, searchRpc, treeRpc } from "../shared/rpc.ts";
 import { SEARCH_DEBOUNCE_MS, SEARCH_MIN, hitsFor, type SearchHits } from "../shared/tree.ts";
 import type { ExportStatus } from "../shared/types.ts";
 import {
-  BUSY_RETRY_MS, CACHE_PROJECTS, CARD_GC_MS, EMPTY, POLL_BACKOFF_MAX_MS, SOFT, TREE_GC_MS,
+  BUSY_RETRY_MS, CACHE_PROJECTS, CARD_GC_MS, EMPTY, SOFT, TREE_GC_MS,
   cardKey, runCard, runTree, treeKey, type CardState, type LoadReason, type TreeState,
 } from "./load.ts";
+import { createPollers, type PollHandle, type PollSource } from "./poller.ts";
 
 export * from "./load.ts";
 
@@ -42,14 +49,35 @@ export * from "./load.ts";
 
 const recent: string[] = [];
 
-/** Keep the last CACHE_PROJECTS workspaces' data; drop the oldest beyond that. */
+/** The revision pollers, one per workspace shown (module-wide = per plugin installation). */
+const pollers = createPollers<ExportStatus | null>({
+  setTimeout: (fn, ms) => setTimeout(fn, ms),
+  clearTimeout: (h) => clearTimeout(h as ReturnType<typeof setTimeout>),
+  background: () => AppState.currentState === "background",
+  onForeground: (fn) => {
+    const sub = AppState.addEventListener("change", (s) => {
+      if (s === "active") fn();
+    });
+    return () => sub.remove();
+  },
+});
+const pollKey = (hostId: string, workspaceId: string) => JSON.stringify([hostId, workspaceId]);
+
+/**
+ * Keep the last CACHE_PROJECTS workspaces' data; drop the oldest beyond that
+ * — never one a mounted panel (a hidden tab, too) still shows.
+ */
 function touchWorkspace(qc: QueryClient, hostId: string, workspaceId: string) {
-  const id = JSON.stringify([hostId, workspaceId]);
+  const id = pollKey(hostId, workspaceId);
   const at = recent.indexOf(id);
   if (at >= 0) recent.splice(at, 1);
   recent.push(id);
-  while (recent.length > CACHE_PROJECTS) {
-    const [h, w] = JSON.parse(recent.shift()!) as [string, string];
+  for (let i = 0; recent.length > CACHE_PROJECTS && i < recent.length; ) {
+    if (pollers.live(recent[i]!)) {
+      i++;
+      continue;
+    }
+    const [h, w] = JSON.parse(recent.splice(i, 1)[0]!) as [string, string];
     qc.removeQueries({ queryKey: ["beads", h, w] });
   }
 }
@@ -71,16 +99,16 @@ export interface BeadsData {
 }
 
 /**
- * The tree of one workspace, polled on `pollMs`. Every timer it starts is
- * cleared on unmount — a leaked one wedges the plugin's reload.
+ * The tree of one workspace. Every copy of the panel reads the same cache
+ * entry (the installation's QueryClient) and joins the same revision poller
+ * (`pollers`); the data counts as fresh until the poll sees the revision move,
+ * so mounting another copy asks the daemon nothing.
  */
 export function useBeadsTree(hostId: string, workspaceId: string, pollMs: number): BeadsData {
   const qc = useQueryClient();
   const treeCall = useRpc(treeRpc);
   const revCall = useRpc(revisionRpc);
   const key = useMemo(() => treeKey(hostId, workspaceId), [hostId, workspaceId]);
-
-  useEffect(() => touchWorkspace(qc, hostId, workspaceId), [qc, hostId, workspaceId]);
 
   const fetchOpts = useCallback(
     (reason: LoadReason) => ({
@@ -99,7 +127,10 @@ export function useBeadsTree(hostId: string, workspaceId: string, pollMs: number
       const prev = qc.getQueryData<TreeState>(key);
       return runTree(prev, prev?.tree ? "revalidate" : "project", workspaceId, treeCall);
     },
-    staleTime: 0,
+    // Fresh until the revision poll says otherwise: a remount or a second
+    // copy draws the cached tree and fetches nothing.
+    staleTime: Infinity,
+    refetchOnMount: false,
     gcTime: TREE_GC_MS,
     retry: false,
     refetchOnWindowFocus: false,
@@ -121,17 +152,69 @@ export function useBeadsTree(hostId: string, workspaceId: string, pollMs: number
 
   const loadRef = useRef(load);
   loadRef.current = load;
-  const checkRef = useRef<(() => Promise<ExportStatus | null>) | null>(null);
-  const checkNow = useCallback(() => (checkRef.current ? checkRef.current() : Promise.resolve(null)), []);
+  const revRef = useRef(revCall);
+  revRef.current = revCall;
+  const pollRef = useRef(pollMs);
+  pollRef.current = pollMs;
+  const handle = useRef<PollHandle<ExportStatus | null> | null>(null);
+  const checkNow = useCallback(() => (handle.current ? handle.current.checkNow() : Promise.resolve(null)), []);
 
-  // The revision poll: a chain of timeouts, so each wait can differ (backoff).
+  // Join the workspace's poller; the last copy to leave stops it.
   useEffect(() => {
-    let disposed = false;
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    const current = () => qc.getQueryData<TreeState>(key);
-    const patch = (fn: (s: TreeState) => TreeState) => qc.setQueryData<TreeState>(key, (s) => (s ? fn(s) : s));
+    const source = treeSource(qc, hostId, workspaceId, (input) => revRef.current(input), (reason) => loadRef.current(reason));
+    // Nobody polled while no panel showed it: what we hold may be old, look now.
+    const held = Boolean(qc.getQueryData<TreeState>(key)?.tree);
+    const h = pollers.acquire(pollKey(hostId, workspaceId), pollRef.current, source, { now: held });
+    handle.current = h;
+    return () => {
+      if (handle.current === h) handle.current = null;
+      h.release();
+    };
+  }, [qc, key, hostId, workspaceId]);
+  useEffect(() => handle.current?.setPollMs(pollMs), [pollMs]);
 
-    async function check(): Promise<ExportStatus | null> {
+  // After the poller: this workspace is live, so it is never the one evicted.
+  useEffect(() => touchWorkspace(qc, hostId, workspaceId), [qc, hostId, workspaceId]);
+
+  const state = query.data ?? EMPTY;
+
+  // `busy`: the server keeps loading bd in the background; ask again shortly
+  // (one retry per workspace, however many copies saw it).
+  useEffect(() => {
+    if (state.busy) handle.current?.retry(BUSY_RETRY_MS, () => void loadRef.current("revalidate"));
+  }, [state]);
+
+  // A tree fetched in this mount (none was cached) may be the server's disk
+  // copy of an older revision: look at the revision now, not an interval later.
+  const hadTree = useRef(Boolean(state.tree));
+  useEffect(() => {
+    if (!state.tree || hadTree.current) return;
+    hadTree.current = true;
+    handle.current?.wake();
+  }, [state.tree]);
+
+  const loading = !query.data || (!state.tree && !state.empty);
+  return useMemo(() => ({ state, loading, load, checkNow }), [state, loading, load, checkNow]);
+}
+
+/**
+ * One round of the revision poll for a workspace: the export status into the
+ * cache, a moved revision fetches the tree (with `have`), our own export only
+ * relabels what we hold, failures feed the backoff.
+ */
+function treeSource(
+  qc: QueryClient,
+  hostId: string,
+  workspaceId: string,
+  revCall: (input: { workspaceId: string }) => Promise<unknown>,
+  load: (reason: LoadReason) => Promise<void>,
+): PollSource<ExportStatus | null> {
+  const key = treeKey(hostId, workspaceId);
+  const current = () => qc.getQueryData<TreeState>(key);
+  const patch = (fn: (s: TreeState) => TreeState) => qc.setQueryData<TreeState>(key, (s) => (s ? fn(s) : s));
+  return {
+    failures: () => current()?.failures ?? 0,
+    async check(live) {
       const s = current();
       if (!s) return null;
       let res: any;
@@ -140,7 +223,7 @@ export function useBeadsTree(hostId: string, workspaceId: string, pollMs: number
       } catch {
         res = null;
       }
-      if (disposed) return null;
+      if (!live()) return null;
       if (!res || !res.ok) {
         patch((x) => ({ ...x, failures: Math.min(x.failures + 1, 16) }));
         return null;
@@ -156,63 +239,23 @@ export function useBeadsTree(hostId: string, workspaceId: string, pollMs: number
           adoptRevision(qc, hostId, workspaceId, held.revision!, res.revision);
         } else {
           fetched = true;
-          await loadRef.current("poll");
+          await load("poll");
         }
       } else if (held.loadIssue && !res.loadError) {
         fetched = true;
-        await loadRef.current("poll");
+        await load("poll");
       } else if (res.loadError) {
         patch((x) => ({ ...x, failures: Math.min(x.failures + 1, 16) }));
       } else if (held.failures) {
         patch((x) => ({ ...x, failures: 0 }));
       }
-      if (disposed) return null;
+      if (!live()) return null;
       if (res.loadError && !fetched) {
         patch((x) => (x.tree ? { ...x, loadIssue: { kind: "backend", code: res.loadError.code, message: res.loadError.message } } : x));
       }
       return res.export ?? null;
-    }
-    checkRef.current = check;
-
-    function arm() {
-      if (disposed) return;
-      const f = current()?.failures ?? 0;
-      const wait = f ? Math.min(pollMs * 2 ** f, Math.max(pollMs, POLL_BACKOFF_MAX_MS)) : pollMs;
-      timer = setTimeout(tick, wait);
-    }
-
-    async function tick() {
-      timer = null;
-      if (AppState.currentState !== "background") await check();
-      if (!disposed && !timer) arm();
-    }
-
-    arm();
-    // Back in front: look now rather than at the end of the interval.
-    const sub = AppState.addEventListener("change", (s) => {
-      if (s !== "active" || disposed) return;
-      if (timer) clearTimeout(timer);
-      void tick();
-    });
-    return () => {
-      disposed = true;
-      if (checkRef.current === check) checkRef.current = null;
-      if (timer) clearTimeout(timer);
-      sub.remove();
-    };
-  }, [qc, key, hostId, workspaceId, pollMs, revCall]);
-
-  const state = query.data ?? EMPTY;
-
-  // `busy`: the server keeps loading bd in the background; ask again shortly.
-  useEffect(() => {
-    if (!state.busy) return;
-    const t = setTimeout(() => void loadRef.current("revalidate"), BUSY_RETRY_MS);
-    return () => clearTimeout(t);
-  }, [state]);
-
-  const loading = !query.data || (!state.tree && !state.empty);
-  return useMemo(() => ({ state, loading, load, checkNow }), [state, loading, load, checkNow]);
+    },
+  };
 }
 
 /** Move to a revision holding the same data: the tree and the cards read at `from` move with it. */

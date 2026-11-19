@@ -12,6 +12,7 @@ import type { Strings } from "./i18n/strings.ts";
 import { usePollMs } from "./settings.tsx";
 import { useStore } from "./store.tsx";
 import { paletteOf, type HostTheme, type Palette } from "./theme.ts";
+import type { TreeRow } from "../shared/types.ts";
 
 export interface Beads {
   hostId: string;
@@ -37,6 +38,17 @@ export interface Beads {
 
 const BeadsContext = createContext<Beads | null>(null);
 
+/**
+ * The tree index of a rows array, built once however many copies of the panel
+ * draw it (the array lives in the shared cache; a new answer is a new array).
+ */
+const indexes = new WeakMap<readonly TreeRow[], TreeIndex>();
+function indexOf(rows: readonly TreeRow[]): TreeIndex {
+  let index = indexes.get(rows);
+  if (!index) indexes.set(rows, (index = buildIndex(rows)));
+  return index;
+}
+
 export function BeadsProvider({ hostId, workspaceId, theme, children }: { hostId: string; workspaceId: string; theme: HostTheme; children: ReactNode }) {
   const { ui, dispatch } = useStore();
   const [pollMs] = usePollMs();
@@ -44,7 +56,7 @@ export function BeadsProvider({ hostId, workspaceId, theme, children }: { hostId
   const pal = paletteOf(theme);
   const data = useBeadsTree(hostId, workspaceId, pollMs);
   const rows = data.state.tree?.issues ?? null;
-  const index = useMemo(() => (rows ? buildIndex(rows) : null), [rows]);
+  const index = useMemo(() => (rows ? indexOf(rows) : null), [rows]);
   const found = useSearch(workspaceId, ui.query, data.state.revision);
   const search = useMemo(() => ({ ids: found.ids, searching: found.searching }), [found.ids, found.searching]);
   const focused = Boolean(ui.focusId);

@@ -7,7 +7,7 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { runCard, runTree, type TreeState } from "../client/load.ts";
+import { applyDelta, runCard, runTree, type TreeState } from "../client/load.ts";
 import {
   ancestorsOf, buildIndex, compareBy, flattenTree, nextSort, relChildTree, statusBreakdown, visibility, NO_FILTERS,
 } from "../shared/tree.ts";
@@ -98,10 +98,10 @@ test("first load, then a poll that changed a row flashes it", async () => {
   const calls: unknown[] = [];
   const first = await runTree(undefined, "project", "w", async (i) => (calls.push(i), FULL));
   assert.equal(first.tree?.issues.length, ROWS.length);
-  assert.deepEqual(calls[0], { workspaceId: "w" }, "nothing to keep: no have");
+  assert.deepEqual(calls[0], { workspaceId: "w", deltas: true }, "nothing to keep: no have, but deltas (a base for the next one)");
   const moved = ROWS.map((r) => (r.id === "demo-a1.4" ? { ...r, updated_at: "2026-08-01T00:00:00Z" } : r));
   const next = await runTree(first, "poll", "w", async (i) => (calls.push(i), { ...FULL, revision: "r2", issues: moved }), () => 1000);
-  assert.deepEqual(calls[1], { workspaceId: "w", have: FIXTURE.tree.revision });
+  assert.deepEqual(calls[1], { workspaceId: "w", have: FIXTURE.tree.revision, deltas: true });
   assert.deepEqual(Object.keys(next.flashed), ["demo-a1.4"]);
 });
 
@@ -137,6 +137,76 @@ test("empty states, busy, and an unchanged answer with nothing held", async () =
   let n = 0;
   const odd = await runTree({ ...none, revision: "r" } as TreeState, "manual", "w", async () => (n++ ? FULL : { ok: true, unchanged: true, revision: "r" }));
   assert.equal(odd.tree?.issues.length, ROWS.length);
+});
+
+test("applyDelta: replaced in place, removed dropped, new appended; nothing moved keeps the array", () => {
+  const rows = ROWS.slice(0, 5);
+  const changed = { ...rows[1]!, title: "changed" };
+  const added = { ...rows[0]!, id: "demo-new" };
+  const out = applyDelta(rows, [changed, added], [rows[3]!.id]);
+  assert.deepEqual(out.map((r) => r.id), [rows[0]!.id, rows[1]!.id, rows[2]!.id, rows[4]!.id, "demo-new"]);
+  assert.equal(out[1], changed);
+  assert.equal(out[0], rows[0], "untouched rows keep their objects");
+  assert.equal(applyDelta(rows, [], []), rows);
+  assert.deepEqual(applyDelta(rows, [], ["nope"]).length, 5, "an unknown removed id is harmless");
+});
+
+test("a delta on the held revision is laid over the rows; its upsert flashes; the header comes from it", async () => {
+  const first = await runTree(undefined, "project", "w", async () => FULL);
+  const moved = { ...ROWS.find((r) => r.id === "demo-a1.4")!, title: "renamed" };
+  const gone = ROWS.find((r) => r.id === "demo-c2")!.id;
+  const calls: any[] = [];
+  const delta = {
+    ok: true, unchanged: false, delta: true, base: first.revision, mode: "bd", root: FULL.root, beadsDir: FULL.beadsDir,
+    prefix: FULL.prefix, revision: "r2", counts: { ...FULL.counts, total: FULL.counts.total - 1 }, warnings: ["w1"],
+    upsert: [moved], removed: [gone],
+  };
+  const next = await runTree(first, "poll", "w", async (i) => (calls.push(i), delta), () => 1000);
+  assert.deepEqual(calls, [{ workspaceId: "w", have: first.revision, deltas: true }]);
+  assert.equal(next.revision, "r2");
+  assert.equal(next.tree?.revision, "r2");
+  assert.deepEqual(next.tree?.warnings, ["w1"]);
+  assert.equal(next.tree?.counts.total, FULL.counts.total - 1);
+  assert.equal(next.tree?.issues.length, ROWS.length - 1);
+  assert.equal(next.tree?.issues.find((r) => r.id === "demo-a1.4")?.title, "renamed");
+  assert.ok(!next.tree?.issues.some((r) => r.id === gone));
+  assert.deepEqual(Object.keys(next.flashed), ["demo-a1.4"]);
+  assert.equal(next.failures, 0);
+  // A delta that moved nothing keeps the rows array (the tree index is not rebuilt).
+  const empty = await runTree(next, "poll", "w", async () => ({ ...delta, base: "r2", revision: "r3", upsert: [], removed: [] }));
+  assert.equal(empty.tree?.issues, next.tree?.issues);
+  assert.equal(empty.revision, "r3");
+});
+
+test("a delta cut from another revision is not applied: the tree is asked again in full", async () => {
+  const first = await runTree(undefined, "project", "w", async () => FULL);
+  const calls: any[] = [];
+  const answers: any[] = [
+    { ok: true, unchanged: false, delta: true, base: "someone-else", mode: "bd", root: "", beadsDir: "", prefix: null, revision: "r9", counts: FULL.counts, warnings: [], upsert: [], removed: [] },
+    { ...FULL, revision: "r9" },
+  ];
+  const next = await runTree(first, "poll", "w", async (i) => (calls.push(i), answers.shift()));
+  assert.deepEqual(calls, [
+    { workspaceId: "w", have: first.revision, deltas: true },
+    { workspaceId: "w", deltas: true },
+  ]);
+  assert.equal(next.revision, "r9");
+  assert.equal(next.tree?.issues.length, ROWS.length);
+  // A delta to a call without `have` cannot be laid anywhere: no loop, rows kept.
+  const odd = await runTree(first, "manual", "w", async () => answers[0] ?? { ...FULL, delta: true, base: "x", upsert: [], removed: [] });
+  assert.equal(odd.tree, first.tree);
+});
+
+test("unchanged with deltas carries no counts or export: the held ones stay", async () => {
+  const first = await runTree(undefined, "project", "w", async () => FULL);
+  const held = { ...first, export: { running: false } as any };
+  const same = await runTree(held, "poll", "w", async () => ({ ok: true, unchanged: true, revision: first.revision, mode: "bd" }));
+  assert.equal(same.tree, first.tree);
+  assert.equal(same.export, held.export);
+  // A write's reload is never answered "unchanged": it asks without have, deltas still on.
+  const calls: any[] = [];
+  await runTree(first, "save", "w", async (i) => (calls.push(i), FULL));
+  assert.deepEqual(calls, [{ workspaceId: "w", deltas: true }]);
 });
 
 test("cards: last good copy survives a failed reload with a note", async () => {

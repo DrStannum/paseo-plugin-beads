@@ -81,6 +81,37 @@ function keepFlashes(flashed: Record<string, number>, now: number): Record<strin
   return out;
 }
 
+/** What runTree asks beads.tree. */
+export interface TreeInput {
+  workspaceId: string;
+  have?: string;
+  deltas: true;
+}
+
+/**
+ * A beads.tree delta laid over the rows held: changed rows replaced in place,
+ * removed ones dropped, new ones appended (order means nothing to the panel:
+ * the index and the sorts work by id). Nothing moved → the very array, so the
+ * tree index is not rebuilt.
+ */
+export function applyDelta(rows: readonly TreeRow[], upsert: readonly TreeRow[], removed: readonly string[]): TreeRow[] {
+  if (!upsert.length && !removed.length) return rows as TreeRow[];
+  const up = new Map<string, TreeRow>();
+  for (const r of upsert) up.set(r.id, r);
+  const gone = new Set(removed);
+  const out: TreeRow[] = [];
+  for (const r of rows) {
+    if (gone.has(r.id)) continue;
+    const next = up.get(r.id);
+    if (next) {
+      out.push(next);
+      up.delete(r.id);
+    } else out.push(r);
+  }
+  for (const r of up.values()) out.push(r);
+  return out;
+}
+
 /**
  * One beads.tree round, folded into the state on screen. Pure apart from the
  * call: exported for the tests.
@@ -89,7 +120,7 @@ export async function runTree(
   prev: TreeState | undefined,
   reason: LoadReason,
   workspaceId: string,
-  call: (input: { workspaceId: string; have?: string }) => Promise<unknown>,
+  call: (input: TreeInput) => Promise<unknown>,
   now: () => number = Date.now,
 ): Promise<TreeState> {
   const p = prev ?? EMPTY;
@@ -97,7 +128,9 @@ export async function runTree(
   const have = soft && p.tree && p.revision ? p.revision : undefined;
   let res: any;
   try {
-    res = await call(have ? { workspaceId, have } : { workspaceId });
+    // Always `deltas`: only an answer to such a call becomes the server's
+    // base for the next delta, a full one after a write included.
+    res = await call(have ? { workspaceId, have, deltas: true } : { workspaceId, deltas: true });
   } catch (err) {
     res = { ok: false, code: "internal", message: messageOf(err) };
   }
@@ -115,6 +148,28 @@ export async function runTree(
     // Only offered when there is a tree; an answer without one asks again in full.
     if (!p.tree) return runTree(p, "manual", workspaceId, call, now);
     return { ...p, revision: res.revision, busy: false, failures: 0, loadIssue: null, export: res.export ?? p.export };
+  }
+  if (res.delta === true) {
+    // A delta is only good on top of the rows it was cut from; on anything
+    // else (the state moved meanwhile) ask again in full.
+    if (!p.tree || res.base !== p.revision) {
+      // Asked without `have`, a delta cannot come: do not loop on one.
+      if (!have) return { ...p, busy: false, failures: Math.min(p.failures + 1, 16) };
+      return runTree(p, "manual", workspaceId, call, now);
+    }
+    const t = now();
+    const issues = applyDelta(p.tree.issues, res.upsert ?? [], res.removed ?? []);
+    const data: TreeData = {
+      mode: res.mode, root: res.root, beadsDir: res.beadsDir, prefix: res.prefix, revision: res.revision,
+      counts: res.counts, warnings: res.warnings ?? [], issues,
+    };
+    let flashed = keepFlashes(p.flashed, t);
+    // The upsert is exactly the rows that changed (or appeared).
+    if (res.upsert?.length && (reason === "poll" || reason === "revalidate")) {
+      flashed = { ...flashed };
+      for (const r of res.upsert as TreeRow[]) flashed[r.id] = t;
+    }
+    return { tree: data, revision: data.revision, empty: null, loadIssue: null, busy: false, failures: 0, flashed, export: p.export };
   }
   const data: TreeData = {
     mode: res.mode, root: res.root, beadsDir: res.beadsDir, prefix: res.prefix, revision: res.revision,
