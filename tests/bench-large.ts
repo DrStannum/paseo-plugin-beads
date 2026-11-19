@@ -22,12 +22,14 @@
  */
 
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
 import { spawn } from "node:child_process";
 import { issueRpc, revisionRpc, treeRpc } from "../shared/rpc.ts";
 import { issue, revision, tree } from "../server/handlers.ts";
 import { BD_LIST_TIMEOUT_MS, BD_TIMEOUT_MS } from "../server/beads/run.ts";
 import { clearCache } from "../server/beads/snapshot.ts";
-import { flushPendingSaves } from "../server/beads/disk.ts";
+import { cacheFileFor, flushPendingSaves } from "../server/beads/disk.ts";
 import { shutdown } from "../server/lifecycle.ts";
 import { call, fakeCtx, wipeDiskCache } from "./support/harness.ts";
 // @ts-ignore -- plain JS fixture builder
@@ -100,14 +102,14 @@ try {
   note("beads.issue, again", `${card2Ms} ms`);
 
   // A restart: memory gone, the disk cache kept.
-  const t1 = Date.now();
-  flushPendingSaves();
-  note("disk cache save (on the turn after the reply)", `${Date.now() - t1} ms`);
+  flushPendingSaves(); // long written by now: it runs on the turn after the cold tree's reply
+  const file = cacheFileFor(fs.realpathSync(path.join(dir, ".beads")));
+  note("disk cache file", `${(fs.statSync(file).size / 1e6).toFixed(1)} MB`);
   clearCache();
   const [diskMs, disk] = await timed(() => call(treeRpc, tree, ws, ctx));
   assert.equal(disk.ok, true);
   assert.equal(disk.revision, cold.revision);
-  note("beads.tree after a restart, from disk", `${diskMs} ms, no bd`);
+  note("beads.tree, restart, from disk", `${diskMs} ms, no bd`);
 
   // Three panels (or a web tab and a phone) opening the project at once: one load serves all.
   clearCache();
