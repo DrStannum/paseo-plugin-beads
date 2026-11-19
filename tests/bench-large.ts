@@ -15,9 +15,11 @@
  * handlers, in-process with a fake daemon context: a cold tree, an
  * unchanged tree, a card, three cold trees at once, the revision poll, and
  * a restart answered from the disk cache (a temporary CBD_CACHE_DIR, see
- * tests/support/harness.ts) — same revision, and moved (the stand-in) —
- * and the revision protocol's answers in bytes: unchanged, and the delta
- * after one edit (it changes the fixture: one issue's priority).
+ * tests/support/harness.ts) — same revision, and moved by an edit outside
+ * the plugin (the stand-in answers at once, the fresh rows follow as a
+ * delta) — the time one snapshot save blocks the plugin's event loop, and
+ * the revision protocol's answers in bytes: unchanged, and the delta after
+ * one edit. It changes the fixture: one issue's priority, twice.
  * Prints a table; it asserts only that every read answers inside the
  * daemon's 30 s and that none times out — the rest is for reading.
  * Building the 4000-issue fixture takes bd about 2.5 min.
@@ -26,12 +28,12 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { editRpc, issueRpc, revisionRpc, treeRpc } from "../shared/rpc.ts";
 import { edit, issue, revision, tree } from "../server/handlers.ts";
 import { BD_LIST_TIMEOUT_MS, BD_TIMEOUT_MS } from "../server/beads/run.ts";
-import { clearCache } from "../server/beads/snapshot.ts";
-import { cacheFileFor, flushPendingSaves } from "../server/beads/disk.ts";
+import { clearCache, loadSnapshot } from "../server/beads/snapshot.ts";
+import { cacheFileFor, flushPendingSaves, saveSnapshot } from "../server/beads/disk.ts";
 import { shutdown } from "../server/lifecycle.ts";
 import { call, exportsIdle, fakeCtx, wipeDiskCache } from "./support/harness.ts";
 // @ts-ignore -- plain JS fixture builder
@@ -43,6 +45,13 @@ const N = Number(opt("--n") ?? 4000);
 const DAEMON_RPC_MS = 30000;
 
 const env = { ...process.env, GIT_CONFIG_GLOBAL: "/dev/null", BD_NON_INTERACTIVE: "1" };
+
+/** A write with bd itself, outside the plugin (a terminal next to the panel). */
+function bdWrite(dir: string, args: string[]): void {
+  execFileSync("bd", ["-C", dir, ...args], { cwd: dir, env, stdio: ["ignore", "ignore", "pipe"] });
+}
+
+const kind = (r: any) => (r.unchanged ? "unchanged" : r.delta ? "delta" : "full");
 
 function bdMs(dir: string, args: string[]): Promise<{ ms: number; bytes: number; ok: boolean }> {
   return new Promise((resolve) => {
@@ -107,11 +116,35 @@ try {
   flushPendingSaves(); // long written by now: it runs on the turn after the cold tree's reply
   const file = cacheFileFor(fs.realpathSync(path.join(dir, ".beads")));
   note("disk cache file", `${(fs.statSync(file).size / 1e6).toFixed(1)} MB`);
+  // What one save blocks the plugin's event loop for (scheduleSave runs it on the turn after a reply).
+  const beadsDir = fs.realpathSync(path.join(dir, ".beads"));
+  const snap = await loadSnapshot(fs.realpathSync(dir), beadsDir);
+  const saves: number[] = [];
+  for (let i = 0; i < 3; i++) {
+    const t = Date.now();
+    assert.equal(saveSnapshot(snap), true);
+    saves.push(Date.now() - t);
+  }
+  note("disk snapshot save (blocks the loop)", `${saves.join(" / ")} ms (stringify + write + fsync + rename)`);
   clearCache();
   const [diskMs, disk] = await timed(() => call(treeRpc, tree, ws, ctx));
   assert.equal(disk.ok, true);
   assert.equal(disk.revision, cold.revision);
   note("beads.tree, restart, from disk", `${diskMs} ms, no bd`);
+
+  // A restart after an edit outside the plugin: the disk copy answers at once,
+  // the client then asks with its revision and waits for bd.
+  flushPendingSaves();
+  clearCache();
+  const was0 = cold.issues.find((r: any) => r.id === KEY).priority ?? 2;
+  bdWrite(dir, ["update", KEY, "--priority", String((was0 + 1) % 5), "-q"]);
+  const [standMs, stand] = await timed(() => call(treeRpc, tree, { ...ws, deltas: true }, ctx));
+  assert.equal(stand.ok, true);
+  assert.equal(stand.revision, cold.revision, "the stand-in is the disk copy");
+  const [freshMs, fresh] = await timed(() => call(treeRpc, tree, { ...ws, deltas: true, have: stand.revision }, ctx));
+  assert.equal(fresh.ok, true);
+  assert.notEqual(fresh.revision, cold.revision);
+  note("beads.tree, restart, revision moved", `${standMs} ms the disk copy (old revision); then ${freshMs} ms to the fresh rows (bd list), ${kind(fresh)} ${JSON.stringify(fresh).length} bytes`);
 
   // Three panels (or a web tab and a phone) opening the project at once: one load serves all.
   clearCache();
@@ -137,6 +170,7 @@ try {
   await exportsIdle();
 
   assert.ok(diskMs < 1000, `the tree from disk took ${diskMs} ms: the aim is under 1 s`);
+  assert.ok(standMs < 1000, `the stand-in took ${standMs} ms: the aim is under 1 s`);
   for (const [what, ms] of [["cold tree", coldMs], ["card", cardMs]] as const) {
     assert.ok(ms < DAEMON_RPC_MS, `${what} took ${ms} ms: over the daemon's ${DAEMON_RPC_MS} ms`);
   }

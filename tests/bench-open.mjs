@@ -12,21 +12,33 @@
  *   npm run bench:open -- --dir <fixture dir>  # reuse one left by --keep (here or by bench)
  *
  * Each run reloads the plugin (`paseo plugin reload beads`: the server's
- * memory is empty) and boots the app in a fresh browser context (the client's
- * cache is empty), then, on one page:
- *   a  cold      Command Center "Open Beads" → first row
+ * memory is empty, its disk snapshot is not) and boots the app in a fresh
+ * browser context (the client's cache is empty), then, on one page:
+ *   a  cold      Command Center "Open Beads" → first row; the server answers
+ *                from its disk snapshot (see a0)
  *   b  warm      close the tab, "Open Beads" again (the client's cache is warm) → first row
  *   c  duplicate a second Beads tab from the pane's "+" menu (shared cache) → first row in it
  *   d  switch    to another tab of the workspace and back → the row is visible again
  *   f  charts    the view switch to Charts → the charts body is drawn
+ *   h  delta     `bd update` of one issue outside the panel, then the page goes
+ *                to the background and back (the poll's foreground check) →
+ *                until the tree answer (a delta) has arrived
  *   r  reload    `paseo plugin reload beads` with the tab open → first row of the remounted panel;
  *                "r net" takes away the reload itself (the CLI until the daemon reports the
  *                plugin running); the panel may start loading before that, so it is a floor
+ * a0 is a run of `a` alone before the others, while the project has no disk
+ * snapshot yet (a fresh fixture, or one the last run unregistered: archiving
+ * the workspace drops it): the cold start with a full `bd list`. It runs
+ * only when there is no snapshot, and is not part of the medians.
  * Times are measured inside the page, from the pointerdown of the click (or
- * the start of the reload) to the first animation frame where the element is
- * on screen. RPCs are read from the page's WebSocket frames (CDP): per
+ * the start of the reload, or the foreground event) to the first animation
+ * frame where the element is on screen; the watcher is armed before the click
+ * and runs from its pointerdown, so a busy main thread does not delay the
+ * measurement itself. RPCs are read from the page's WebSocket frames (CDP): per
  * scenario, the beads.* requests sent from the action until 1 s of quiet,
- * and the bytes of their answers; `e` lists the answer sizes themselves.
+ * the round trip of the slowest tree call ("tree ms": sent → answer in, at
+ * the page's socket) and the bytes of the answers (a tree answer is full,
+ * delta or unchanged); `e` lists the answer sizes themselves.
  *
  * Paseo's daemon is shared: the only thing done to it is the plugin reload;
  * the fixture is registered for the run and unregistered after it (see
@@ -36,7 +48,10 @@
  */
 
 import { execFileSync, spawn } from 'node:child_process';
+import fs from 'node:fs';
 import os from 'node:os';
+import path from 'node:path';
+import { cacheFileFor } from '../server/beads/disk.ts';
 import { closeBrowser, withPanel, withWorkspace } from './lib/paseo-web.mjs';
 import { buildFixture } from './fixture/build.mjs';
 
@@ -51,6 +66,9 @@ const MAIN = '[data-testid="workspace-pane-main"]';
 const BEADS_TAB = `${MAIN} [data-testid="workspace-tab-plugin_workspace_5_beads_5_beads"]`;
 /** Longest wait for one scenario: a cold bd list on a big fixture plus busy retries. */
 const WAIT_MS = 180_000;
+/** The issue `h` edits from outside (every fixture size has it). */
+const EDIT_KEY = 'demo-x0005';
+const BD_ENV = { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', BD_NON_INTERACTIVE: '1' };
 
 const say = (/** @type {string} */ msg) => console.error(`[bench-open] ${msg}`);
 const sleep = (/** @type {number} */ ms) => new Promise((r) => setTimeout(r, ms));
@@ -76,7 +94,7 @@ async function reloadPlugin() {
 // RPC capture: the page's WebSocket frames over CDP
 
 /**
- * @typedef {{ at: number, method: string, sentBytes: number, answer?: { bytes: number, kind: string } }} Rpc
+ * @typedef {{ at: number, method: string, sentBytes: number, answer?: { bytes: number, kind: string, at: number } }} Rpc
  */
 
 /** Record every beads.* request of the page and the size and kind of its answer. */
@@ -104,10 +122,12 @@ async function captureRpcs(/** @type {any} */ page) {
     if (!rpc) return;
     byId.delete(/** @type {string} */ (id));
     const head = s.slice(0, 400);
+    // A delta's head comes first in the answer, its rows after; issue text is
+    // JSON-escaped, so `"delta":true` cannot come from inside a row.
     const kind = /"unchanged":true/.test(head) ? 'unchanged'
       : /"ok":false/.test(head) ? (head.match(/"code":"([^"]+)"/)?.[1] ?? 'error')
-        : /"unchanged":false/.test(head) ? 'full' : 'ok';
-    rpc.answer = { bytes: Buffer.byteLength(s), kind };
+        : /"unchanged":false/.test(head) ? (/"delta":true/.test(head) ? 'delta' : 'full') : 'ok';
+    rpc.answer = { bytes: Buffer.byteLength(s), kind, at: Date.now() };
   });
   return {
     /** Requests sent from `since` on. */
@@ -132,6 +152,7 @@ function summarize(rpcs) {
   return {
     tree: tree.length,
     treeKinds: tree.map((r) => r.answer?.kind ?? 'none').join(','),
+    treeMs: Math.max(0, ...tree.map((r) => (r.answer ? r.answer.at - r.at : 0))),
     revision: of('beads.revision').length,
     other: rpcs.length - tree.length - of('beads.revision').length,
     bytes: rpcs.reduce((n, r) => n + (r.answer?.bytes ?? 0), 0),
@@ -141,38 +162,57 @@ function summarize(rpcs) {
 // ---------------------------------------------------------------------------
 // In-page timing
 
-/** Remember the time of the last pointerdown, and mark panels that exist now as old. */
+/**
+ * The in-page watcher: `arm(sel)` before a click; its pointerdown starts the
+ * clock and a requestAnimationFrame loop that notes the first frame where
+ * `sel` is on screen outside an old panel. It runs inside the page from the
+ * pointerdown on, so it sees that frame even when the main thread is too
+ * busy to answer the test's own calls until later.
+ */
 async function installMarks(/** @type {any} */ page) {
-  await page.evaluate(() => {
+  await page.evaluate(([timeoutMs]) => {
     const w = /** @type {any} */ (window);
     if (w.__bench) return;
-    w.__bench = { mark: 0 };
-    document.addEventListener('pointerdown', () => { w.__bench.mark = performance.now(); }, true);
-  });
+    const b = (w.__bench = { mark: 0, want: null, seen: null });
+    const visible = (/** @type {string} */ sel) => [...document.querySelectorAll(sel)].some((e) => e.getClientRects().length > 0 && !e.closest('[data-bench-old]'));
+    b.watch = () => {
+      const sel = b.want;
+      const start = b.mark;
+      const tick = () => {
+        if (b.want !== sel) return;
+        if (visible(sel)) { b.seen = Math.round(performance.now() - start); b.want = null; return; }
+        if (performance.now() - start > timeoutMs) { b.seen = -1; b.want = null; return; }
+        requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    };
+    document.addEventListener('pointerdown', () => {
+      if (!b.want) return;
+      b.mark = performance.now();
+      b.watch();
+    }, true);
+  }, [WAIT_MS]);
 }
+
+/** Watch for `sel` from the next pointerdown on (or from now, `now`). */
+const arm = (/** @type {any} */ page, /** @type {string} */ sel, now = false) => page.evaluate(([sel, now]) => {
+  const b = /** @type {any} */ (window).__bench;
+  b.want = sel;
+  b.seen = null;
+  if (now) { b.mark = performance.now(); b.watch(); }
+}, [sel, now]);
 
 /** Mark the panels on the page now, so a wait can look for a new one only. */
 const markOldPanels = (/** @type {any} */ page) => page.evaluate(() => {
   for (const el of document.querySelectorAll('[data-testid="beads-panel"]')) el.setAttribute('data-bench-old', '1');
 });
 
-/**
- * Milliseconds from the last pointerdown (or `from`, a page performance.now())
- * to the first frame where `sel` is on screen outside an old panel.
- */
-async function msUntil(/** @type {any} */ page, /** @type {string} */ sel, /** @type {number | null} */ from = null) {
-  return page.evaluate(([sel, from, timeoutMs]) => new Promise((resolve, reject) => {
-    const w = /** @type {any} */ (window);
-    const start = from ?? w.__bench.mark;
-    const end = performance.now() + timeoutMs;
-    const seen = () => [...document.querySelectorAll(sel)].some((e) => e.getClientRects().length > 0 && !e.closest('[data-bench-old]'));
-    const tick = () => {
-      if (seen()) return resolve(Math.round(performance.now() - start));
-      if (performance.now() > end) return reject(new Error(`not on screen: ${sel}`));
-      requestAnimationFrame(tick);
-    };
-    tick();
-  }), [sel, from, WAIT_MS]);
+/** Milliseconds the armed watcher saw: from the pointerdown (or arm) to the first frame with the element. */
+async function msUntil(/** @type {any} */ page) {
+  const handle = await page.waitForFunction(() => /** @type {any} */ (window).__bench.seen, null, { timeout: WAIT_MS + 5_000, polling: 100 });
+  const ms = await handle.jsonValue();
+  if (ms < 0) throw new Error('not on screen in time');
+  return ms;
 }
 
 async function openFromCommandCenter(/** @type {any} */ page) {
@@ -180,17 +220,82 @@ async function openFromCommandCenter(/** @type {any} */ page) {
   await page.keyboard.type('Beads');
   const item = page.getByText(/^Open Beads$/).first();
   await item.waitFor({ timeout: 15_000 });
+  await arm(page, ROW);
   await item.click();
 }
+
+/** Does the server hold a disk snapshot of the fixture's project (server/beads/disk.ts)? */
+const hasDiskSnapshot = (/** @type {string} */ dir) => fs.existsSync(cacheFileFor(fs.realpathSync(path.join(dir, '.beads'))));
+
+/** Change one issue's priority with bd, the way a terminal next to the panel would. */
+function editOutside(/** @type {string} */ dir) {
+  const bd = (/** @type {string[]} */ args) => execFileSync('bd', ['-C', dir, ...args], { cwd: dir, env: BD_ENV, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  const [issue] = JSON.parse(bd(['--readonly', '--json', 'show', EDIT_KEY]));
+  bd(['update', EDIT_KEY, '--priority', String(((issue?.priority ?? 2) + 1) % 5), '-q']);
+}
+
+/** The page to the background and back: what the poll's foreground check reacts to (AppState on web). */
+const backgroundAndBack = (/** @type {any} */ page) => page.evaluate(async () => {
+  const set = (/** @type {string} */ v) => {
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => v });
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => v === 'hidden' });
+    document.dispatchEvent(new Event('visibilitychange'));
+  };
+  set('hidden');
+  await new Promise((r) => setTimeout(r, 300));
+  set('visible');
+  // The 300 ms in the background are not the panel's: the clock starts at the return.
+});
 
 // ---------------------------------------------------------------------------
 // One run
 
-/** @typedef {{ ms: number, tree: number, treeKinds: string, revision: number, other: number, bytes: number }} Scenario */
+/** @typedef {{ ms: number, tree: number, treeKinds: string, treeMs: number, revision: number, other: number, bytes: number }} Scenario */
+
+/** Run `act`, time it with `wait`, then let the RPCs settle and count them. */
+function scenarioSet(/** @type {Awaited<ReturnType<typeof captureRpcs>>} */ rpc) {
+  /** @type {Record<string, Scenario>} */
+  const out = {};
+  /** @type {Record<string, number>} */
+  const sizes = {};
+  const run = async (/** @type {string} */ name, /** @type {() => Promise<void>} */ act, /** @type {(t0: number) => Promise<number>} */ wait) => {
+    await rpc.settle();
+    const t0 = Date.now();
+    await act();
+    const ms = await wait(t0);
+    await rpc.settle();
+    const rpcs = rpc.since(t0);
+    out[name] = { ms, ...summarize(rpcs) };
+    for (const r of rpcs) {
+      if (!r.answer) continue;
+      const key = `${r.method} ${r.answer.kind}`;
+      sizes[key] = Math.max(sizes[key] ?? 0, r.answer.bytes);
+    }
+    say(`${name}: ${ms} ms, ${JSON.stringify(out[name])}`);
+  };
+  return { out, sizes, run };
+}
+
+/**
+ * a0: the cold open with no disk snapshot, alone (a fresh fixture). Leaves
+ * the snapshot behind for the runs (it is written on the turn after the answer).
+ * @param {import('./lib/paseo-web.mjs').Workspace} workspace
+ */
+async function primeRun(workspace) {
+  await reloadPlugin();
+  return withPanel({ workspace, now: null, open: false }, async ({ page }) => {
+    const rpc = await captureRpcs(page);
+    await installMarks(page);
+    const s = scenarioSet(rpc);
+    await s.run('a0 cold, no disk snapshot: bd list', () => openFromCommandCenter(page), () => msUntil(page));
+    for (let i = 0; i < 50 && !hasDiskSnapshot(workspace.dir); i++) await sleep(100);
+    return s.out['a0 cold, no disk snapshot: bd list'];
+  });
+}
 
 /**
  * @param {import('./lib/paseo-web.mjs').Workspace} workspace
- * @returns {Promise<{ scenarios: Record<string, Scenario>, sizes: Record<string, number>, reloadMs: number }>}
+ * @returns {Promise<{ scenarios: Record<string, Scenario>, sizes: Record<string, number>, reloadMs: number, disk: boolean }>}
  */
 async function oneRun(workspace) {
   const reloadMs = await reloadPlugin();
@@ -198,28 +303,10 @@ async function oneRun(workspace) {
   return withPanel({ workspace, now: null, open: false }, async ({ page }) => {
     const rpc = await captureRpcs(page);
     await installMarks(page);
-    /** @type {Record<string, Scenario>} */
-    const scenarios = {};
-    /** @type {Record<string, number>} */
-    const sizes = {};
-    /** Run `act`, time it with `wait`, then let the RPCs settle and count them. */
-    const scenario = async (/** @type {string} */ name, /** @type {() => Promise<void>} */ act, /** @type {() => Promise<number>} */ wait) => {
-      await rpc.settle();
-      const t0 = Date.now();
-      await act();
-      const ms = await wait();
-      await rpc.settle();
-      const rpcs = rpc.since(t0);
-      scenarios[name] = { ms, ...summarize(rpcs) };
-      for (const r of rpcs) {
-        if (!r.answer) continue;
-        const key = `${r.method} ${r.answer.kind}`;
-        sizes[key] = Math.max(sizes[key] ?? 0, r.answer.bytes);
-      }
-      say(`${name}: ${ms} ms, ${JSON.stringify(scenarios[name])}`);
-    };
+    const { out: scenarios, sizes, run: scenario } = scenarioSet(rpc);
+    const disk = hasDiskSnapshot(workspace.dir);
 
-    await scenario('a cold: Open Beads after reload', () => openFromCommandCenter(page), () => msUntil(page, ROW));
+    await scenario('a cold: Open Beads after reload', () => openFromCommandCenter(page), () => msUntil(page));
 
     await scenario('b warm: close the tab, Open Beads', async () => {
       const close = page.locator(`${MAIN} [data-testid^="workspace-plugin-close-"]`).first();
@@ -227,40 +314,61 @@ async function oneRun(workspace) {
       await close.click({ force: true });
       await page.locator('[data-testid="beads-panel"]').first().waitFor({ state: 'detached', timeout: 15_000 });
       await openFromCommandCenter(page);
-    }, () => msUntil(page, ROW));
+    }, () => msUntil(page));
 
     await scenario('c duplicate: second tab from "+"', async () => {
       await markOldPanels(page);
       await page.locator(`${MAIN} [data-testid="workspace-new-tab-button"]`).click();
       const item = page.locator('[data-testid="workspace-new-tab-menu-plugin:beads:beads"]');
       await item.waitFor({ timeout: 15_000 });
+      await arm(page, ROW);
       await item.click();
-    }, () => msUntil(page, ROW));
+    }, () => msUntil(page));
 
     // Away to a Diff tab (not timed), then back to the first Beads tab.
     await page.locator(`${MAIN} [data-testid="workspace-new-tab-button"]`).click();
     await page.locator('[data-testid="workspace-new-tab-menu-diff"]').click();
     await page.waitForFunction((sel) => ![...document.querySelectorAll(sel)].some((e) => e.getClientRects().length > 0), ROW, { timeout: 15_000 });
     await page.evaluate(() => { for (const el of document.querySelectorAll('[data-bench-old]')) el.removeAttribute('data-bench-old'); });
-    await scenario('d switch: another tab and back', () => page.locator(BEADS_TAB).first().click(), () => msUntil(page, ROW));
+    await scenario('d switch: another tab and back', async () => {
+      await arm(page, ROW);
+      await page.locator(BEADS_TAB).first().click();
+    }, () => msUntil(page));
 
-    await scenario('f charts: switch the view to Charts', () =>
-      page.locator('[data-testid="beads-view-switch"] [data-testid="beads-view-charts"]').filter({ visible: true }).first().click(),
-    () => msUntil(page, '[data-testid^="beads-charts-body-"]'));
+    await scenario('f charts: switch the view to Charts', async () => {
+      await arm(page, '[data-testid^="beads-charts-body-"]');
+      await page.locator('[data-testid="beads-view-switch"] [data-testid="beads-view-charts"]').filter({ visible: true }).first().click();
+    }, () => msUntil(page));
     await page.locator('[data-testid="beads-view-switch"] [data-testid="beads-view-tree"]').filter({ visible: true }).first().click();
     await page.locator(ROW).filter({ visible: true }).first().waitFor({ timeout: 15_000 });
+
+    // Not timed in the page: from the foreground event until the tree answer is in.
+    let foreground = 0;
+    await scenario('h delta: bd update outside, back to the foreground', async () => {
+      editOutside(workspace.dir);
+      await backgroundAndBack(page);
+      foreground = Date.now();
+    }, async (t0) => {
+      const end = Date.now() + WAIT_MS;
+      for (;;) {
+        const tree = rpc.since(t0).find((r) => r.method === 'beads.tree' && r.answer);
+        if (tree?.answer) return tree.answer.at - foreground;
+        if (Date.now() > end) throw new Error('no tree answer after the outside edit');
+        await sleep(50);
+      }
+    });
 
     let inPageReloadMs = 0;
     await scenario('r reload: plugin reload with the tab open', async () => {
       await markOldPanels(page);
-      await page.evaluate(() => { /** @type {any} */ (window).__bench.mark = performance.now(); });
+      await arm(page, ROW, true);
       inPageReloadMs = await reloadPlugin();
-    }, () => msUntil(page, ROW));
+    }, () => msUntil(page));
     // The reload itself is the CLI's and the daemon's; what is left is the plugin's.
     scenarios['r net: minus the reload itself'] = { ...scenarios['r reload: plugin reload with the tab open'] };
     scenarios['r net: minus the reload itself'].ms -= inPageReloadMs;
 
-    return { scenarios, sizes, reloadMs };
+    return { scenarios, sizes, reloadMs, disk };
   });
 }
 
@@ -290,8 +398,14 @@ const load = os.loadavg().map((x) => x.toFixed(2)).join(' ');
 const commit = (() => { try { return execFileSync('git', ['rev-parse', '--short', 'HEAD'], { encoding: 'utf8' }).trim(); } catch { return '?'; } })();
 /** @type {Awaited<ReturnType<typeof oneRun>>[]} */
 const runs = [];
+/** @type {Scenario | null} */
+let prime = null;
 try {
   await withWorkspace({ dir, title: 'beads bench' }, async (workspace) => {
+    if (!hasDiskSnapshot(workspace.dir)) {
+      say('no disk snapshot yet: a0 first');
+      prime = await primeRun(workspace);
+    }
     for (let i = 0; i < RUNS; i++) {
       say(`run ${i + 1}/${RUNS}`);
       runs.push(await oneRun(workspace));
@@ -304,14 +418,16 @@ try {
 }
 
 const names = Object.keys(runs[0].scenarios);
+const row = (/** @type {string} */ name, /** @type {Scenario[]} */ of) => {
+  const pick = (/** @type {'tree'|'treeMs'|'revision'|'other'|'bytes'} */ k) => median(of.map((s) => s[k]));
+  console.log(`  ${name.padEnd(52)} ${String(median(of.map((s) => s.ms))).padStart(7)}  ${of.map((s) => s.ms).join(' / ').padEnd(20)} ${String(pick('tree')).padStart(4)} ${String(pick('treeMs') || '-').padStart(7)} ${String(pick('revision')).padStart(4)} ${String(pick('other')).padStart(6)}  ${kb(pick('bytes')).padStart(9)}   ${of.map((s) => s.treeKinds || '-').join(' | ')}`);
+};
 console.log(`\nbench:open on ${dir}`);
 console.log(`commit ${commit}, ${RUNS} runs, medians; load ${load}; ${((Date.now() - t0) / 1000).toFixed(0)} s`);
-console.log(`\n  ${'scenario'.padEnd(44)} ${'ms'.padStart(7)}  ${'runs (ms)'.padEnd(20)} tree  rev  other  bytes in   tree answers`);
-for (const name of names) {
-  const of = runs.map((r) => r.scenarios[name]);
-  const pick = (/** @type {'tree'|'revision'|'other'|'bytes'} */ k) => median(of.map((s) => s[k]));
-  console.log(`  ${name.padEnd(44)} ${String(median(of.map((s) => s.ms))).padStart(7)}  ${of.map((s) => s.ms).join(' / ').padEnd(20)} ${String(pick('tree')).padStart(4)} ${String(pick('revision')).padStart(4)} ${String(pick('other')).padStart(6)}  ${kb(pick('bytes')).padStart(9)}   ${of.map((s) => s.treeKinds || '-').join(' | ')}`);
-}
+console.log(`\n  ${'scenario'.padEnd(52)} ${'ms'.padStart(7)}  ${'runs (ms)'.padEnd(20)} tree tree ms  rev  other  bytes in   tree answers`);
+if (prime) row('a0 cold, no disk snapshot: bd list (once)', [prime]);
+for (const name of names) row(name, runs.map((r) => r.scenarios[name]));
+console.log(`\n  disk snapshot there before a: ${runs.map((r) => (r.disk ? 'yes' : 'no')).join(' / ')}`);
 console.log('\n  e answer sizes (largest seen, median over runs)');
 const keys = [...new Set(runs.flatMap((r) => Object.keys(r.sizes)))].sort();
 for (const k of keys) console.log(`    ${k.padEnd(40)} ${kb(median(runs.map((r) => r.sizes[k] ?? 0)))}`);

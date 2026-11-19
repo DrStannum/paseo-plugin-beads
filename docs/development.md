@@ -159,11 +159,13 @@ PNGs**: they are the documentation's illustrations and regression fixtures at on
 
 `npm run bench` (`tests/bench-large.ts`) builds a project of 4000 issues with
 kilobytes of text each, times `bd list` and `bd comments` alone and four at once,
-then the handlers in-process: a cold tree, an unchanged tree, a card, the tree
-after a restart answered from the disk cache, three cold trees at once, the
-revision poll, and the bytes of an unchanged answer and of the delta after one
-edit. It asserts only that every read answers inside
-the daemon's 30 seconds and the tree from disk inside one; the rest is for reading. These numbers are where the
+then the handlers in-process: a cold tree, an unchanged tree, a card, how long one
+save of the disk snapshot blocks the plugin, the tree after a restart answered from
+the disk cache (with the same revision, and with one moved by an edit outside the
+plugin: the disk copy at once, then the fresh rows as a delta), three cold trees at
+once, the revision poll, and the bytes of an unchanged answer and of the delta after
+one edit. It asserts only that every read answers inside the daemon's 30 seconds
+and the tree from disk inside one; the rest is for reading. These numbers are where the
 15-second read timeout, the 60-second `bd list` limit and the 25-second handler
 budget come from.
 
@@ -172,10 +174,17 @@ Paseo and times what a user waits for in the web app: from the click to the firs
 row of the tree when the panel is opened cold (right after a plugin reload, in a
 fresh browser), warm (the tab closed and opened again), as a second tab from the
 "+" menu, after switching to another tab and back, from the view switch to the
-drawn charts, and after a plugin reload with the tab open. For each case it also
-counts the `beads.*` requests and the bytes of their answers, read from the page's
-WebSocket frames, and lists the answer sizes. Each of three runs (`--runs`) starts
-from a plugin reload; the table shows medians. `--n`, `--keep` and `--dir` work as
+drawn charts, and after a plugin reload with the tab open; and, after one issue is
+changed with `bd` outside the panel and the page comes back to the foreground, how
+long until the tree answer (a delta) is in. The cold open after a reload is served
+from the server's disk snapshot; the cold open without one (`a0`, a full `bd list`)
+runs once first when the project has none yet. Times are taken inside the page by a
+watcher armed before the click, from its pointerdown to the first frame that shows
+the element, so a busy main thread does not delay the measurement. For each case it
+also counts the `beads.*` requests, the round trip of the slowest tree call and the
+bytes of the answers, read from the page's WebSocket frames, tells a full tree
+answer from a delta and an unchanged one, and lists the answer sizes. Each of three
+runs (`--runs`) starts from a plugin reload; the table shows medians. `--n`, `--keep` and `--dir` work as
 in `npm run bench`, and a fixture kept by one can be reused by the other.
 
 ---
