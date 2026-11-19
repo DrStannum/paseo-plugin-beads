@@ -420,11 +420,14 @@ try {
           await board.waitFor({ timeout: 10_000 });
           assert.equal(await page.getByText('Открыть Beads в боковой панели', { exact: true }).count(), 0, 'the explorer item shows without an explorer');
           await page.waitForTimeout(600);
-          // The sheet only (the header above it names the host), down to its last item.
+          // The sheet only (the header above it names the host), down to its last item. Paseo
+          // leaves the sheet at one of two heights (that of the level before, or fitted to
+          // these two items); fitted, its last item ends 19 px above the window's bottom edge.
+          // A bottom margin that fits both keeps the crop the same either way.
           const top = /** @type {any} */ (await back.boundingBox()).y - 24;
           const last = /** @type {any} */ (await board.boundingBox());
           const { width } = page.viewportSize();
-          files.push(await shot(page, 'preview-header-compact-ru', { clip: { x: 0, y: top, width, height: last.y + last.height + 24 - top } }));
+          files.push(await shot(page, 'preview-header-compact-ru', { clip: { x: 0, y: top, width, height: last.y + last.height + 16 - top } }));
         });
       }
     });
