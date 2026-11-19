@@ -52,6 +52,18 @@ the revision it already holds (`have`); an unchanged snapshot answers
 `unchanged` with the counts and no rows, instead of the same megabytes again. The
 Refresh button, Retry and the reload after a write always ask for the full tree.
 
+**Only what moved.** A client that also says it can apply deltas (`deltas: true`)
+gets one of three answers. `unchanged` shrinks to the revision and the mode, a
+few dozen bytes. If the revision moved and the server still remembers the rows of
+the one the client holds, the answer is a delta: the rows changed or added since
+that revision (`base`) and the ids removed — one edit on a 4000-issue project is a
+row or two, not megabytes. Otherwise — the first load, a revision the server
+never handed out or has forgotten, more than max(50, 20%) of the rows moved, or a
+stale answer — it is the full set as before. The server keeps, per project, a
+short hash of every row for the last 8 revisions it answered with, and for the
+disk copy a restarted plugin read back, so a delta works across a plugin reload
+too. Nothing in it is issue text, and none of it is logged.
+
 **The panel keeps what it has.** The last good tree of each workspace and the
 cards opened in it stay in the client's memory (react-query's cache, up to eight
 workspaces), so reopening the panel or switching back draws the list at once and
@@ -89,7 +101,7 @@ not just by reading the source (see [Development and tests](development.md)).
 | `beads.health` | when the snapshot is out of date | mode, where `.beads` is, whether `bd` exists |
 | `beads.revision` | never | revision, export state, last load error |
 | `beads.job-status` | never | the state of the background export or sync |
-| `beads.tree` | when the snapshot is out of date | rows, counts, revision, `stale`; or `unchanged` with counts when `have` matches |
+| `beads.tree` | when the snapshot is out of date | rows, counts, revision, `stale`; or `unchanged` with counts when `have` matches; with `deltas`, a delta (`upsert`, `removed`) from `have` |
 | `beads.issue` | `bd comments`, once per snapshot and issue | the full card, `stale` |
 | `beads.search` | when the snapshot is out of date | matching ids, `stale` |
 

@@ -19,6 +19,7 @@ import { revisionOf } from "./project.ts";
 import { BD_LIST_TIMEOUT_MS, findBd, firstLine, looksLikeNoDatabase, runBd, type BdResult } from "./run.ts";
 import { defer, sleep } from "./timers.ts";
 import { dropProject, readSnapshot as readDisk, scheduleSave, touch } from "./disk.ts";
+import { clearHistory, forgetHistory, remember } from "./history.ts";
 import { log } from "./log.ts";
 
 export interface LoadError {
@@ -206,6 +207,8 @@ function primeFromDisk(entry: Entry, root: string, beadsDir: string, revision: s
   const saved = snapshotFromDisk(root, beadsDir);
   if (!saved) return;
   entry.lastGood = saved;
+  // A client that held this revision before the restart can get a delta from it.
+  remember(beadsDir, saved.revision, saved.mode, saved.issues);
   if (saved.revision === revision) entry.current = saved;
   else entry.standIn = saved;
 }
@@ -334,9 +337,10 @@ async function readSnapshot(root: string, beadsDir: string, revision: string, la
   };
 }
 
-/** Drop every snapshot held in memory (tests, plugin cleanup). The disk cache stays. */
+/** Drop every snapshot (and delta base) held in memory (tests, plugin cleanup). The disk cache stays. */
 export function clearCache(): void {
   cache.clear();
+  clearHistory();
 }
 
 /**
@@ -358,6 +362,7 @@ export function invalidateProject(beadsDir: string): void {
  */
 export function forgetProject(beadsDir: string): void {
   cache.delete(beadsDir);
+  forgetHistory(beadsDir);
   dropProject(beadsDir);
 }
 

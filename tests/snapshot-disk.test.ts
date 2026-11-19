@@ -344,6 +344,54 @@ describe("warming and tidying", () => {
   });
 });
 
+describe("deltas across a restart: the disk copy is a base", () => {
+  const D = { ...ws, deltas: true };
+
+  it("the client's revision is the disk copy's, the project moved: it waits for bd and gets a delta", async () => {
+    const first = await loadSaveRestart();
+    stub.setIssues(DATA.map((i) => (i.id === "dk-2" ? { ...i, title: "Renamed elsewhere" } : i)));
+    moveRevision();
+    const res = await call(treeRpc, tree, { ...D, have: first.revision }, ctx);
+    assert.equal(res.delta, true, JSON.stringify(res).slice(0, 200));
+    assert.equal(res.base, first.revision);
+    assert.notEqual(res.revision, first.revision);
+    assert.deepEqual(res.upsert.map((r: any) => [r.id, r.title]), [["dk-2", "Renamed elsewhere"]]);
+    assert.deepEqual(res.removed, []);
+    assert.equal(stub.count("list"), 2, "one bd list after the restart");
+  });
+
+  it("the stand-in a fresh tab got after the restart is a base too", async () => {
+    await loadSaveRestart();
+    stub.setIssues(DATA.filter((i) => i.id !== "dk-1.1"));
+    moveRevision();
+    stub.config({ listSleepMs: 400 });
+    const quick = await call(treeRpc, tree, D, ctx);
+    assert.equal(quick.issues.length, 3, "the stand-in, in full");
+    const res = await call(treeRpc, tree, { ...D, have: quick.revision }, ctx);
+    assert.equal(res.delta, true);
+    assert.deepEqual(res.removed, ["dk-1.1"]);
+  });
+
+  it("same revision after the restart: unchanged, no bd", async () => {
+    const first = await loadSaveRestart();
+    const res = await call(treeRpc, tree, { ...D, have: first.revision }, ctx);
+    assert.equal(res.unchanged, true);
+    assert.equal(stub.count("list"), 1);
+  });
+
+  it("a revision from before the restart that is not on disk: the full set", async () => {
+    const old = await call(treeRpc, tree, D, ctx);
+    stub.setIssues(DATA.map((i) => (i.id === "dk-1" ? { ...i, priority: 0 } : i)));
+    moveRevision();
+    await loadSaveRestart(); // the file now holds the newer revision
+    stub.setIssues(DATA.map((i) => (i.id === "dk-1" ? { ...i, priority: 3 } : i)));
+    moveRevision();
+    const res = await call(treeRpc, tree, { ...D, have: old.revision }, ctx);
+    assert.ok(!("delta" in res));
+    assert.equal(res.issues.length, 3);
+  });
+});
+
 describe("logs", () => {
   it("no log line carries issue content (invariant 6)", () => {
     assert.ok(logs.lines.some((l) => l.includes("disk cache")), "the disk cache said nothing at all");

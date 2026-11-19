@@ -15,7 +15,9 @@
  * handlers, in-process with a fake daemon context: a cold tree, an
  * unchanged tree, a card, three cold trees at once, the revision poll, and
  * a restart answered from the disk cache (a temporary CBD_CACHE_DIR, see
- * tests/support/harness.ts) — same revision, and moved (the stand-in).
+ * tests/support/harness.ts) — same revision, and moved (the stand-in) —
+ * and the revision protocol's answers in bytes: unchanged, and the delta
+ * after one edit (it changes the fixture: one issue's priority).
  * Prints a table; it asserts only that every read answers inside the
  * daemon's 30 s and that none times out — the rest is for reading.
  * Building the 4000-issue fixture takes bd about 2.5 min.
@@ -25,13 +27,13 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
-import { issueRpc, revisionRpc, treeRpc } from "../shared/rpc.ts";
-import { issue, revision, tree } from "../server/handlers.ts";
+import { editRpc, issueRpc, revisionRpc, treeRpc } from "../shared/rpc.ts";
+import { edit, issue, revision, tree } from "../server/handlers.ts";
 import { BD_LIST_TIMEOUT_MS, BD_TIMEOUT_MS } from "../server/beads/run.ts";
 import { clearCache } from "../server/beads/snapshot.ts";
 import { cacheFileFor, flushPendingSaves } from "../server/beads/disk.ts";
 import { shutdown } from "../server/lifecycle.ts";
-import { call, fakeCtx, wipeDiskCache } from "./support/harness.ts";
+import { call, exportsIdle, fakeCtx, wipeDiskCache } from "./support/harness.ts";
 // @ts-ignore -- plain JS fixture builder
 import { buildFixture } from "./fixture/build.mjs";
 
@@ -120,6 +122,19 @@ try {
   const [revMs, rev] = await timed(() => call(revisionRpc, revision, ws, ctx));
   assert.equal(rev.ok, true);
   note("beads.revision (the poll)", `${revMs} ms, runs no bd`);
+
+  // The revision protocol: what a client holding the rows is sent.
+  const base = await call(treeRpc, tree, { ...ws, deltas: true }, ctx);
+  const same = await call(treeRpc, tree, { ...ws, deltas: true, have: base.revision }, ctx);
+  assert.equal(same.unchanged, true);
+  note("beads.tree, unchanged (deltas)", `${JSON.stringify(same).length} bytes`);
+  const was = base.issues.find((r: any) => r.id === KEY).priority ?? 2;
+  const edited = await call(editRpc, edit, { ...ws, id: KEY, fields: { priority: (was + 1) % 5 } }, ctx);
+  assert.equal(edited.ok, true, `edit: ${JSON.stringify(edited).slice(0, 200)}`);
+  const [deltaMs, delta] = await timed(() => call(treeRpc, tree, { ...ws, deltas: true, have: base.revision }, ctx));
+  assert.equal(delta.delta, true, `no delta after one edit: ${JSON.stringify(delta).slice(0, 200)}`);
+  note("beads.tree, delta after one edit", `${deltaMs} ms, ${delta.upsert.length} rows, ${JSON.stringify(delta).length} bytes`);
+  await exportsIdle();
 
   assert.ok(diskMs < 1000, `the tree from disk took ${diskMs} ms: the aim is under 1 s`);
   for (const [what, ms] of [["cold tree", coldMs], ["card", cardMs]] as const) {

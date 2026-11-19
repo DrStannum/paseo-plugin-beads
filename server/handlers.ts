@@ -14,6 +14,8 @@
  *   after it (an RPC has no "after the reply").
  * - After a restart the first read may be answered from the disk cache
  *   (server/beads/snapshot.ts); writes always plan against fresh data.
+ * - beads.tree with `deltas` answers a moved revision with only the rows that
+ *   moved, when it remembers the client's (server/beads/history.ts).
  */
 
 import type { PluginHandlerContext } from "@getpaseo/plugin/server";
@@ -29,7 +31,8 @@ import { findBd } from "./beads/run.ts";
 import {
   forgetProject, invalidateProject, loadErrorOf, loadSnapshot, warmProject, type LoadOptions, type Snapshot,
 } from "./beads/snapshot.ts";
-import { issueCard, searchIssues, treeRow } from "./beads/card.ts";
+import { issueCard, searchIssues } from "./beads/card.ts";
+import { deltaFrom, remember, rowsOf } from "./beads/history.ts";
 import { planComment, planCreate, planEdit, runComment, runCreate, runEdit } from "./beads/write.ts";
 import { exportStatus, requestExport, requestSync } from "./beads/export.ts";
 import { within } from "./beads/timers.ts";
@@ -148,9 +151,11 @@ export function tree(input: RpcInput<typeof treeRpc>, ctx: Ctx): Promise<RpcOutp
     const snapshot = await snapshotWithin(loc, handlerTuning.budgetMs, { have: input.have });
     if (!snapshot) return BUSY;
     if (snapshot.error) return { ...loadFailure(snapshot), project: loc.root };
+    const { have, deltas } = input;
     // A client already holding this revision is told so instead of getting
     // the same rows again. Never for a stale answer: that one has to arrive.
-    if (input.have && input.have === snapshot.revision && !snapshot.stale) {
+    if (have && have === snapshot.revision && !snapshot.stale) {
+      if (deltas) return { ok: true as const, unchanged: true as const, revision: snapshot.revision, mode: snapshot.mode };
       return {
         ok: true as const,
         unchanged: true as const,
@@ -160,7 +165,7 @@ export function tree(input: RpcInput<typeof treeRpc>, ctx: Ctx): Promise<RpcOutp
         export: exportStatus(loc.beadsDir),
       };
     }
-    return {
+    const head = {
       ok: true as const,
       unchanged: false as const,
       mode: snapshot.mode,
@@ -170,9 +175,16 @@ export function tree(input: RpcInput<typeof treeRpc>, ctx: Ctx): Promise<RpcOutp
       revision: snapshot.revision,
       counts: snapshot.counts,
       warnings: snapshot.warnings,
-      issues: snapshot.issues.map(treeRow),
-      ...staleOf(snapshot),
     };
+    // A stale answer (the last good set after a failed load) always arrives
+    // in full, whatever the client holds.
+    if (snapshot.stale) return { ...head, issues: rowsOf(snapshot.issues).rows, stale: snapshot.stale };
+    if (!deltas) return { ...head, issues: rowsOf(snapshot.issues).rows };
+    // What this client will hold after the reply: a base for its next ask.
+    remember(loc.beadsDir, snapshot.revision, snapshot.mode, snapshot.issues);
+    const delta = have ? deltaFrom(loc.beadsDir, have, snapshot.mode, snapshot.issues) : null;
+    if (delta) return { ...head, delta: true as const, base: have!, upsert: delta.upsert, removed: delta.removed };
+    return { ...head, issues: rowsOf(snapshot.issues).rows };
   });
 }
 

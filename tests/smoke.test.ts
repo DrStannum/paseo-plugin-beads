@@ -18,6 +18,7 @@ import {
   comment, create, edit, health, issue, jobStatus, ping, revision, search, tree,
 } from "../server/handlers.ts";
 import { tuning } from "../server/beads/snapshot.ts";
+import { historyTuning } from "../server/beads/history.ts";
 import { shutdown } from "../server/lifecycle.ts";
 import { liveRuns } from "../server/beads/run.ts";
 import { liveTimers } from "../server/beads/timers.ts";
@@ -399,6 +400,193 @@ describe("bd mode against the stub: tree, card, search, snapshot cache", () => {
     assert.ok(lines.every((l) => l.includes("bd_failed") && l.includes("locked")), lines[0]);
     const all = logs.lines.join("\n");
     for (const s of SECRETS) assert.ok(!all.includes(s), `issue text "${s}" reached the log`);
+  });
+});
+
+// ── deltas: unchanged / delta / full ───────────────────────────────────
+
+/** What the client will do with a delta (pbd-eks.5): replace by id, drop removed, append new. */
+function applyDelta(rows: any[], delta: any): any[] {
+  const up = new Map(delta.upsert.map((r: any) => [r.id, r]));
+  const gone = new Set(delta.removed);
+  const out = rows.filter((r) => !gone.has(r.id)).map((r) => up.get(r.id) ?? r);
+  for (const r of delta.upsert) if (!rows.some((x) => x.id === r.id)) out.push(r);
+  return out;
+}
+const byId = (rows: any[]) => rows.slice().sort((a, b) => a.id.localeCompare(b.id));
+
+describe("deltas: a client naming its revision gets unchanged, a delta, or the full set", () => {
+  let stub: Stub;
+  let project: string;
+  let ctx: ReturnType<typeof fakeCtx>;
+  let bump = 0;
+  const ws = { workspaceId: "ws" };
+  const D = { ...ws, deltas: true };
+  /** Rewrite the stub's data, and move the revision the way a write elsewhere would. */
+  const change = (fn: (issues: any[]) => any[]) => {
+    stub.setIssues(fn(stub.issues()));
+    bump++;
+    fs.writeFileSync(path.join(project, ".beads", "issues.jsonl"), `${"x".repeat(bump)}\n`);
+  };
+  /** The full answer bd gives now, for comparison. */
+  const fullNow = async () => (await call(treeRpc, tree, ws, ctx)).issues;
+  let held: any;
+  before(() => {
+    stub = makeStub(DATA);
+    project = makeProject();
+    ctx = fakeCtx({ ws: project });
+    usePath(stub.dir, ORIGINAL_PATH);
+  });
+  after(() => {
+    Object.assign(historyTuning, { minRows: 50, share: 0.2 });
+    stub.remove();
+    fs.rmSync(project, { recursive: true, force: true });
+  });
+
+  it("no have: the full set, as before", async () => {
+    held = await call(treeRpc, tree, D, ctx);
+    assert.equal(held.unchanged, false);
+    assert.ok(!("delta" in held));
+    assert.equal(held.issues.length, 4);
+  });
+
+  it("have = current: unchanged in under 300 bytes, no rows, no bd run", async () => {
+    const before = stub.count("list");
+    const res = await call(treeRpc, tree, { ...D, have: held.revision }, ctx);
+    assert.equal(res.unchanged, true);
+    assert.equal(res.revision, held.revision);
+    assert.ok(!("counts" in res) && !("export" in res) && !("issues" in res));
+    const bytes = JSON.stringify(res).length;
+    assert.ok(bytes < 300, `${bytes} bytes`);
+    assert.equal(stub.count("list"), before);
+  });
+
+  it("one issue changed: a delta with that one row, based on have", async () => {
+    change((all) => all.map((i) => (i.id === "st-1.2" ? { ...i, title: "Child two renamed", status: "closed" } : i)));
+    const res = await call(treeRpc, tree, { ...D, have: held.revision }, ctx);
+    assert.equal(res.delta, true, JSON.stringify(res).slice(0, 200));
+    assert.equal(res.unchanged, false);
+    assert.equal(res.base, held.revision);
+    assert.notEqual(res.revision, held.revision);
+    assert.ok(!("issues" in res));
+    // Closing the blocker also frees st-1.1: its row moved too.
+    assert.deepEqual(res.upsert.map((r: any) => r.id).sort(), ["st-1.1", "st-1.2"]);
+    assert.deepEqual(res.removed, []);
+    assert.equal(res.counts.total, 4);
+    assert.equal(res.counts.byStatus.closed, 2);
+    assert.deepEqual(byId(applyDelta(held.issues, res)), byId(await fullNow()));
+    held = { ...res, issues: applyDelta(held.issues, res) };
+  });
+
+  it("an issue removed: its id in removed", async () => {
+    change((all) => all.filter((i) => i.id !== "st-9"));
+    const res = await call(treeRpc, tree, { ...D, have: held.revision }, ctx);
+    assert.equal(res.delta, true);
+    assert.deepEqual(res.removed, ["st-9"]);
+    assert.deepEqual(byId(applyDelta(held.issues, res)), byId(await fullNow()));
+    held = { ...res, issues: applyDelta(held.issues, res) };
+  });
+
+  it("an issue added: it comes as an upsert", async () => {
+    change((all) => [...all, { id: "st-10", title: "New one", status: "open", priority: 2, issue_type: "task" }]);
+    const res = await call(treeRpc, tree, { ...D, have: held.revision }, ctx);
+    assert.equal(res.delta, true);
+    assert.deepEqual(res.upsert.map((r: any) => r.id), ["st-10"]);
+    assert.deepEqual(res.removed, []);
+    assert.deepEqual(byId(applyDelta(held.issues, res)), byId(await fullNow()));
+    held = { ...res, issues: applyDelta(held.issues, res) };
+  });
+
+  it("an older revision still in the ring: one delta covers every step since", async () => {
+    const old = held;
+    change((all) => all.map((i) => (i.id === "st-1" ? { ...i, priority: 0 } : i)));
+    const step = await call(treeRpc, tree, { ...D, have: old.revision }, ctx);
+    change((all) => all.map((i) => (i.id === "st-10" ? { ...i, labels: ["late"] } : i)));
+    const res = await call(treeRpc, tree, { ...D, have: old.revision }, ctx);
+    assert.equal(res.delta, true);
+    assert.equal(res.base, old.revision);
+    assert.notEqual(res.revision, step.revision);
+    assert.deepEqual(res.upsert.map((r: any) => r.id).sort(), ["st-1", "st-10"]);
+    held = { ...res, issues: applyDelta(old.issues, res) };
+  });
+
+  it("an unknown have: the full set", async () => {
+    const res = await call(treeRpc, tree, { ...D, have: "never-handed-out" }, ctx);
+    assert.equal(res.unchanged, false);
+    assert.ok(!("delta" in res));
+    assert.equal(res.issues.length, 4);
+  });
+
+  it("a big gap: the full set", async () => {
+    Object.assign(historyTuning, { minRows: 1, share: 0 });
+    try {
+      change((all) => all.map((i) => ({ ...i, title: `${i.title}!` })));
+      const res = await call(treeRpc, tree, { ...D, have: held.revision }, ctx);
+      assert.ok(!("delta" in res), "a delta of every row");
+      assert.equal(res.issues.length, 4);
+      held = res;
+    } finally {
+      Object.assign(historyTuning, { minRows: 50, share: 0.2 });
+    }
+  });
+
+  it("without deltas: the original answers — full on a move, unchanged with counts and export", async () => {
+    change((all) => all.map((i) => (i.id === "st-1" ? { ...i, priority: 1 } : i)));
+    const res = await call(treeRpc, tree, { ...ws, have: held.revision }, ctx);
+    assert.ok(!("delta" in res));
+    assert.equal(res.issues.length, 4);
+    const after = await call(treeRpc, tree, { ...D, have: res.revision }, ctx);
+    assert.equal(after.unchanged, true, "unchanged needs no base");
+    const same = await call(treeRpc, tree, { ...ws, have: res.revision }, ctx);
+    assert.equal(same.unchanged, true);
+    assert.equal(same.counts.total, 4);
+    assert.ok(same.export);
+    held = res;
+  });
+
+  it("the revision moving during the read: the answer is labelled with the revision it read, the next one catches up", async () => {
+    // The answer above went to a client without deltas: it is no base. Take one.
+    held = await call(treeRpc, tree, D, ctx);
+    stub.config({ listSleepMs: 400 });
+    try {
+      change((all) => all.map((i) => (i.id === "st-1.1" ? { ...i, assignee: "first" } : i)));
+      const asked = call(treeRpc, tree, { ...D, have: held.revision }, ctx);
+      await sleep(150);
+      change((all) => all.map((i) => (i.id === "st-10" ? { ...i, assignee: "second" } : i)));
+      const moved = (await call(revisionRpc, revision, ws, ctx)).revision;
+      const res = await asked;
+      assert.equal(res.delta, true);
+      assert.notEqual(res.revision, moved, "labelled with the revision taken before the read");
+      const mid = applyDelta(held.issues, res);
+      const next = await call(treeRpc, tree, { ...D, have: res.revision }, ctx);
+      assert.equal(next.delta, true);
+      assert.equal(next.base, res.revision);
+      assert.equal(next.revision, moved);
+      assert.deepEqual(byId(applyDelta(mid, next)), byId(await fullNow()));
+    } finally {
+      stub.config({});
+    }
+  });
+
+  it("a stale answer is always the full last good set, even to a delta client", async () => {
+    const good = await call(treeRpc, tree, D, ctx);
+    stub.config({ failList: true });
+    try {
+      change((all) => all.map((i) => (i.id === "st-1" ? { ...i, priority: 3 } : i)));
+      const res = await call(treeRpc, tree, { ...D, have: good.revision }, ctx);
+      assert.equal(res.stale.code, "bd_failed");
+      assert.ok(!("delta" in res));
+      assert.equal(res.issues.length, 4);
+      const again = await call(treeRpc, tree, { ...D, have: res.revision }, ctx);
+      assert.ok(again.stale && !again.unchanged, "a stale answer must keep arriving in full");
+    } finally {
+      stub.config({});
+    }
+  });
+
+  it("no log line carries issue content", () => {
+    const all = logs.lines.join("\n");
+    for (const s of [...SECRETS, "Child two renamed", "New one"]) assert.ok(!all.includes(s), s);
   });
 });
 

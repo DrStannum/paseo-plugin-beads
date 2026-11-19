@@ -74,18 +74,48 @@ export const revisionRpc = defineRpc({
   ]),
 });
 
-/** Port of GET /tree[?have=rev]: the light rows, or `unchanged` if `have` is current. */
+/**
+ * Port of GET /tree[?have=rev], plus deltas. Three answers to a client that
+ * names the revision it holds (`have`):
+ *
+ * - `unchanged` — `have` is current: a few bytes, no rows.
+ * - a delta (`delta: true`) — only for `deltas: true`, when the server still
+ *   remembers `have`'s rows and few of them moved: the rows changed or added
+ *   since `base` (= `have`) and the ids removed. Apply it only on top of
+ *   `base`; on any other revision ask again without `have`.
+ * - the full set — the first load, an unknown `have`, a big gap, a stale
+ *   answer (the last good snapshot after a failed load).
+ *
+ * Without `deltas` the answers are the original two, unchanged keeps
+ * `counts` and `export`; with it, unchanged drops them (the revision poll
+ * carries the export, and the counts are those of the rows already held).
+ */
 export const treeRpc = defineRpc({
   name: "beads.tree",
-  input: WorkspaceInput.extend({ have: z.string().optional() }),
+  input: WorkspaceInput.extend({ have: z.string().optional(), deltas: z.boolean().optional() }),
   output: z.union([
     z.object({
       ok: z.literal(true),
       unchanged: z.literal(true),
       revision: z.string(),
-      counts: CountsSchema,
       mode: ModeSchema,
-      export: ExportStatusSchema,
+      counts: CountsSchema.optional(),
+      export: ExportStatusSchema.optional(),
+    }),
+    z.object({
+      ok: z.literal(true),
+      unchanged: z.literal(false),
+      delta: z.literal(true),
+      base: z.string(),
+      mode: ModeSchema,
+      root: z.string(),
+      beadsDir: z.string(),
+      prefix: z.string().nullable(),
+      revision: z.string(),
+      counts: CountsSchema,
+      warnings: z.array(z.string()),
+      upsert: z.array(TreeRowSchema),
+      removed: z.array(z.string()),
     }),
     z.object({
       ok: z.literal(true),

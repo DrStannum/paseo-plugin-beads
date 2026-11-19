@@ -64,7 +64,11 @@ closed set, never with `--readonly` and always with `--dolt-auto-commit off`;
 workspace answers `unknown_workspace` from every RPC and a directory without
 `.beads` `no_beads`. The snapshot cache is driven through failure on purpose:
 parallel requests after a revision move spawn one `bd list`; `have` answers
-`unchanged` without rows; a failing `bd list` serves the last good snapshot marked
+`unchanged` without rows; with `deltas`, a changed, removed or added issue comes as
+a delta that, applied to the rows held, equals the full answer — also when the
+revision moves during the read — while an unknown `have`, a big gap or a stale
+answer get the full set (the pure diff and the revision ring are unit-tested in
+`tests/history.test.ts`, the restart case in `tests/snapshot-disk.test.ts`); a failing `bd list` serves the last good snapshot marked
 `stale`; a load slower than the handler's budget answers `busy` and lands in the
 cache; the log line names the reason without issue text.
 
@@ -157,7 +161,8 @@ PNGs**: they are the documentation's illustrations and regression fixtures at on
 kilobytes of text each, times `bd list` and `bd comments` alone and four at once,
 then the handlers in-process: a cold tree, an unchanged tree, a card, the tree
 after a restart answered from the disk cache, three cold trees at once, the
-revision poll. It asserts only that every read answers inside
+revision poll, and the bytes of an unchanged answer and of the delta after one
+edit. It asserts only that every read answers inside
 the daemon's 30 seconds and the tree from disk inside one; the rest is for reading. These numbers are where the
 15-second read timeout, the 60-second `bd list` limit and the 25-second handler
 budget come from.
