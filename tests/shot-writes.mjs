@@ -250,6 +250,10 @@ try {
         fs.mkdirSync(path.join(jsonl, 'blocker'), { recursive: true });
         await tap(panel, 'beads-status');
         await tap(panel, 'beads-status-in_progress');
+        // The write first: the daemon keeps the export state per .beads path, so
+        // a run before this one (same fixture path) may already show the badge,
+        // and the panel reads it as soon as it opens.
+        await panel.locator(sel(`beads-row-${FIXTURE.selected}`)).getByText('in progress').waitFor({ timeout: 40_000 });
         await panel.locator(sel('beads-export-stale')).waitFor({ timeout: 40_000 });
         // The written card carries today's updated/started dates: show one the fixture dates.
         await panel.locator(sel('beads-row-demo-b7')).click();
