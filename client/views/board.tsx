@@ -480,7 +480,13 @@ export function BoardView({ passes, compact }: { passes: (row: TreeRow) => boole
       ref={root as never}
       testID="beads-board"
       style={{ flex: 1, minWidth: 0, position: "relative" }}
-      onLayout={(e) => setHeight(Math.round(e.nativeEvent.layout.height))}
+      onLayout={(e) => {
+        // A hidden board (its tab in the background, or a card in its place in a
+        // narrow tab — display: none) lays out at 0: keep the last height, or the
+        // lanes unmount and come back scrolled to the start.
+        const h = Math.round(e.nativeEvent.layout.height);
+        if (h > 0) setHeight(h);
+      }}
     >
       {height > 0 ? (
         <ScrollView horizontal style={{ flex: 1 }} contentContainerStyle={{ gap: compact ? 8 : 10, ...pad }}>
