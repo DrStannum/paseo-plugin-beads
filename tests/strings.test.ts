@@ -36,3 +36,11 @@ test("Russian plurals and locale fallback", () => {
   assert.equal(stringsFor("de"), STRINGS.en);
   assert.equal(stringsFor(undefined), STRINGS.en);
 });
+
+test("the host's labels (panel tab, Command Center) exist in both languages", async () => {
+  const { messages } = await import("../client/i18n/messages.ts");
+  const { en, ru } = (messages as unknown as { resources: Record<"en" | "ru", Record<string, string>> }).resources;
+  assert.deepEqual(Object.keys(ru).sort(), Object.keys(en).sort());
+  for (const key of Object.keys(en)) assert.ok(en[key] && ru[key], key);
+  assert.equal(en.openBoard, "Open Beads board");
+});

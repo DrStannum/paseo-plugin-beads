@@ -71,8 +71,8 @@ paseo plugin install /path/to/paseo-plugin-beads
 ```
 
 The daemon builds the plugin and loads it; nothing else needs restarting. Then, in
-a workspace, open **Beads** from the workspace's panels (or the explorer), or type
-**Open Beads** in the Command Center. The plugin's settings page sits under
+a workspace, open **Beads** from the workspace's panels, or type **Open Beads** (or **Open
+Beads board**) in the Command Center. The plugin's settings page sits under
 Paseo's **Settings**, next to the other plugins.
 
 The repository URL above is the intended home of the project; until it is

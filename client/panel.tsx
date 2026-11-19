@@ -25,7 +25,7 @@
  */
 
 import type { PluginWorkspacePanelProps } from "@getpaseo/plugin/client";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { View, type LayoutChangeEvent } from "react-native";
 import { cardPaneWidth, filterOptions, flattenTree, parentIds, pruneLabels, toggleValue, visibility } from "../shared/tree.ts";
 import { BeadsProvider, useBeads } from "./beads.tsx";
@@ -40,6 +40,7 @@ import { ViewSwitch } from "./view-switch.tsx";
 import { BoardView } from "./views/board.tsx";
 import { ChartsView } from "./views/charts/index.tsx";
 import { EditorHost } from "./editor.tsx";
+import { intents } from "./intent.ts";
 import { OpenSettingsContext, useBeadsSettings } from "./settings.tsx";
 import { AssignMe, CardHeaderActions, CardNotices, CommentBox, ExportBadge, NewIssueButton, SettingsButton, StatusControl, SyncButton } from "./write-controls.tsx";
 import { WritesProvider } from "./writes.tsx";
@@ -61,6 +62,7 @@ export function BeadsPanel(props: PluginWorkspacePanelProps & { openSettings?: (
       <StoreProvider tab={props.tab}>
         <BeadsProvider hostId={props.host.id} workspaceId={props.workspaceId} theme={props.theme}>
           <WritesProvider tab={props.tab}>
+            <OpenIntents workspaceId={props.workspaceId} revision={props.revision} />
             <Body compactHost={props.layout.compact} />
             <EditorHost />
           </WritesProvider>
@@ -68,6 +70,41 @@ export function BeadsPanel(props: PluginWorkspacePanelProps & { openSettings?: (
       </StoreProvider>
     </OpenSettingsContext.Provider>
   );
+}
+
+/**
+ * Acts on what was asked from outside the tab (client/intent.ts): the
+ * Command Center's "Open Beads board", an issue picked in the explorer. The
+ * intent is taken when an openPanel landed in this tab (`revision` grew) or
+ * on the tab's first render; a view is switched at once, an issue is opened
+ * once the tree is there to reveal it in (its branch expanded, its row
+ * scrolled into view). The charts have no card: an issue leaves them for the
+ * tree.
+ */
+function OpenIntents({ workspaceId, revision }: { workspaceId: string; revision: number }) {
+  const { index, openIssue } = useBeads();
+  const { ui, dispatch } = useStore();
+  const seen = useRef<number | null>(null);
+  const [issue, setIssue] = useState<string | null>(null);
+  useEffect(() => {
+    const freshMount = seen.current === null;
+    const revisionGrew = !freshMount && revision !== seen.current;
+    seen.current = revision;
+    const got = intents.take(workspaceId, { revisionGrew, freshMount });
+    if (!got) return;
+    let view = got.view ?? ui.view;
+    if (got.issueId && view === "charts") view = "tree";
+    if (view !== ui.view) dispatch({ type: "view", view });
+    if (got.issueId) setIssue(got.issueId);
+    // Only a new revision (or the mount) is a reason to look: not every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workspaceId, revision]);
+  useEffect(() => {
+    if (!issue || !index) return;
+    openIssue(issue);
+    setIssue(null);
+  }, [issue, index, openIssue]);
+  return null;
 }
 
 const HEADER_SLOTS: HeaderSlots = {

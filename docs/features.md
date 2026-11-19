@@ -5,9 +5,10 @@
 Every part of the interface, in the order you meet it: where the panel lives, the
 tree, the board, the charts, the columns, the filters, the card, editing, syncing.
 
-**Where it lives.** Beads is a workspace panel. In a workspace, open it from the
-workspace's panels or from the explorer, or type **Open Beads** in the Command
-Center; it shows the issues of whichever `.beads` project the workspace directory
+**Where it lives.** Beads is a workspace panel, a tab of the workspace. In a
+workspace, open it from the workspace's panels, or from the Command Center: **Open
+Beads** opens the tab (or brings up the one already open), **Open Beads board**
+does the same and switches it to the board. It shows the issues of whichever `.beads` project the workspace directory
 sits in (the workspace directory itself or the nearest parent holding a `.beads`,
 the rule `bd` itself follows). The daemon resolves that directory from the
 workspace, so the panel never sends a path of its own. Everything the panel
