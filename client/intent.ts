@@ -129,3 +129,17 @@ export function requestOpen(workspaceId: string, intent: OpenIntent = {}, open?:
     throw err;
   }
 }
+
+/**
+ * Open the workspace's compact Beads panel in the explorer (`openExplorer`),
+ * or the tab when there is no explorer: in the compact (phone-sized) layout
+ * the host throws "Explorer is unavailable" at once. `openTab` is the tab's
+ * opener for requestOpen (the Command Center passes its own).
+ */
+export function openExplorerOrTab(workspaceId: string, openExplorer: () => void, openTab?: () => void, bus: IntentBus = intents): void {
+  try {
+    openExplorer();
+  } catch {
+    requestOpen(workspaceId, {}, openTab, bus);
+  }
+}

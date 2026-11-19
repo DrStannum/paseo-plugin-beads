@@ -16,6 +16,18 @@ remembers between visits (the open branches, the selection, the filters, the
 columns, the sort, the view, the card width) is kept in the panel's own tab state,
 which Paseo stores with the tab, so each workspace keeps its own.
 
+**The header button.** A workspace that has a `.beads` project gets a Beads button
+in its header, a menu: **Open Beads**, **Open Beads board**, **Open Beads in the
+explorer**. A workspace without one gets no button. In a phone-sized window Paseo
+folds plugin buttons into the header's **⋯** sheet (Beads is there, under
+**Workspace actions**), and the explorer item is left out: there is no explorer
+there, and the Command Center does not open, so this is the quick way in. The
+plugin checks which workspaces have a project (a few file checks on the daemon,
+no `bd`) when it starts, when the workspaces change, and every 30 seconds, so a
+`bd init` in an open workspace brings the button within half a minute.
+
+![The Beads button in the workspace header, its menu open](../tests/preview-header-dark-en.png)
+
 **In the explorer.** Paseo's right sidebar (the explorer) gets its own Beads
 panel, not a smaller copy of the tab: your work at a glance. Add it from the
 explorer's **+** menu, or type **Open Beads in the explorer** in the Command

@@ -50,6 +50,9 @@ and never creates a git commit.
 - **Your work in the explorer.** A compact panel in Paseo's right sidebar: your
   issues in progress and ready to pick up, counts and a search; a click opens the
   issue in the tab.
+- **A button in the workspace header** of every workspace with a `.beads`
+  project: the tab, the board or the explorer in one click, also on a
+  phone-sized window.
 - **Russian and English**, light and dark, one column on a narrow pane.
 
 More pictures: [the whole interface, screenshot by screenshot](docs/screenshots.md).
@@ -75,7 +78,8 @@ paseo plugin install /path/to/paseo-plugin-beads
 
 The daemon builds the plugin and loads it; nothing else needs restarting. Then, in
 a workspace, open **Beads** from the workspace's panels, or type **Open Beads** (or **Open
-Beads board**, **Open Beads in the explorer**) in the Command Center. The plugin's settings page sits under
+Beads board**, **Open Beads in the explorer**) in the Command Center, or use the Beads button in the
+workspace header. The plugin's settings page sits under
 Paseo's **Settings**, next to the other plugins.
 
 The repository URL above is the intended home of the project; until it is

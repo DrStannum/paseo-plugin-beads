@@ -22,10 +22,10 @@ import type { PluginHandlerContext } from "@getpaseo/plugin/server";
 import type { RpcInput, RpcOutput } from "@getpaseo/plugin";
 import type {
   commentRpc, createRpc, editRpc, exportRpc, healthRpc, issueRpc, jobStatusRpc,
-  pingRpc, revisionRpc, searchRpc, syncRpc, treeRpc,
+  pingRpc, revisionRpc, searchRpc, syncRpc, treeRpc, workspacesRpc,
 } from "../shared/rpc.ts";
 import type { Failure } from "../shared/types.ts";
-import { workspaceDirectory } from "./workspaces.ts";
+import { listWorkspaceDirectories, workspaceDirectory } from "./workspaces.ts";
 import { resolveProject, revisionOf } from "./beads/project.ts";
 import { findBd } from "./beads/run.ts";
 import {
@@ -140,6 +140,22 @@ export function revision(input: RpcInput<typeof revisionRpc>, ctx: Ctx): Promise
       export: exportStatus(loc.beadsDir),
       loadError: loadErrorOf(loc.beadsDir),
     };
+  });
+}
+
+/**
+ * The workspaces with a beads project, for the header buttons. Only the
+ * daemon's list and a few stats per workspace (resolveProject walks up like
+ * bd): no bd, no snapshot, no warming — a workspace nobody opens Beads in
+ * costs nothing more.
+ */
+export function workspaces(_input: RpcInput<typeof workspacesRpc>, ctx: Ctx): Promise<RpcOutput<typeof workspacesRpc>> {
+  return guarded("beads.workspaces", async () => {
+    const workspaceIds: string[] = [];
+    for (const [id, directory] of await listWorkspaceDirectories(ctx)) {
+      if (resolveProject(directory).ok) workspaceIds.push(id);
+    }
+    return { ok: true as const, workspaceIds };
   });
 }
 

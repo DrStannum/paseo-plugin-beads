@@ -1,7 +1,10 @@
-import type { PluginClientContext, PluginWorkspacePanelProps } from "@getpaseo/plugin/client";
+import type { PluginButtonBehavior, PluginClientContext, PluginText, PluginWorkspacePanelProps } from "@getpaseo/plugin/client";
+import { AppState, Dimensions } from "react-native";
 import icon from "./client/icon.svg";
+import { createHeaderButtons } from "./client/header-button.ts";
 import { messages } from "./client/i18n/messages.ts";
-import { requestOpen, setPanelOpener } from "./client/intent.ts";
+import { openExplorerOrTab, requestOpen, setPanelOpener } from "./client/intent.ts";
+import { workspacesRpc } from "./shared/rpc.ts";
 import { BeadsExplorer } from "./client/explorer.tsx";
 import { BeadsPanel } from "./client/panel.tsx";
 import { SettingsScreen } from "./client/settings.tsx";
@@ -64,14 +67,89 @@ export default function contribute(client: PluginClientContext) {
       keywords: ["beads", "bd", "explorer", "sidebar", "mine", "боковая", "мои"],
       context: "workspace",
       // The compact (phone) layout has no explorer and the host throws: the tab instead.
-      onSelect: (ctx) => {
-        try {
-          ctx.openPanel("beads-explorer", { location: "explorer" });
-        } catch {
-          requestOpen(ctx.workspace.id, {}, () => ctx.openPanel("beads"));
-        }
-      },
+      onSelect: (ctx) =>
+        openExplorerOrTab(ctx.workspace.id, () => ctx.openPanel("beads-explorer", { location: "explorer" }), () => ctx.openPanel("beads")),
     }),
+    headerButtons(client),
   ];
   return () => cleanups.forEach((c) => c());
+}
+
+/** Paseo's compact layout (no explorer): a window under 600 px wide (its `xs`/`sm` breakpoints). */
+const COMPACT_BELOW_PX = 600;
+const isCompact = (width: number) => width < COMPACT_BELOW_PX;
+
+/**
+ * A Beads button in the header of each workspace that has a beads project
+ * (client/header-button.ts), a menu: the tab, the board, the explorer. On a
+ * phone-sized window it is the quick way in — the Command Center does not
+ * open there — and the explorer item is hidden (there is no explorer).
+ */
+function headerButtons(client: PluginClientContext): () => void {
+  const menu = (workspaceId: string, compact: boolean): PluginButtonBehavior<PluginText> => ({
+    kind: "menu",
+    items: [
+      {
+        kind: "item",
+        id: "open",
+        title: messages.message("openPanel"),
+        icon: { svg: icon },
+        behavior: { kind: "action", onPress: () => requestOpen(workspaceId, {}) },
+      },
+      {
+        kind: "item",
+        id: "board",
+        title: messages.message("openBoard"),
+        icon: "SquareKanban",
+        behavior: { kind: "action", onPress: () => requestOpen(workspaceId, { view: "board" }) },
+      },
+      {
+        kind: "item",
+        id: "explorer",
+        title: messages.message("openExplorer"),
+        icon: "PanelRight",
+        visible: !compact,
+        behavior: {
+          kind: "action",
+          onPress: () => openExplorerOrTab(workspaceId, () => client.openPanel("beads-explorer", { workspaceId, location: "explorer" })),
+        },
+      },
+    ],
+  });
+  let compact = isCompact(Dimensions.get("window").width);
+  const set = createHeaderButtons({
+    add: (workspaceId) =>
+      client.addHeaderButton({
+        id: "beads",
+        workspaceId,
+        button: { title: messages.message("panelTitle"), icon: { svg: icon }, behavior: menu(workspaceId, compact) },
+      }),
+    list: async () => {
+      const res = await client.rpc(workspacesRpc, {});
+      return res.ok ? res.workspaceIds : null;
+    },
+    // A nudge only: the periodic read catches what this misses.
+    watch: (changed) => client.paseo.workspaces.subscribe(changed),
+    report: (message) => console.warn(`[beads] ${message}`),
+    setTimeout: (fn, ms) => setTimeout(fn, ms),
+    clearTimeout: (h) => clearTimeout(h as ReturnType<typeof setTimeout>),
+    background: () => AppState.currentState === "background",
+    onForeground: (fn) => {
+      const sub = AppState.addEventListener("change", (s) => {
+        if (s === "active") fn();
+      });
+      return () => sub.remove();
+    },
+  });
+  // Crossing the compact width shows or hides the explorer item (a new menu per workspace).
+  const resized = Dimensions.addEventListener("change", ({ window }) => {
+    const now = isCompact(window.width);
+    if (now === compact) return;
+    compact = now;
+    set.updateAll((workspaceId) => ({ behavior: menu(workspaceId, compact) }));
+  });
+  return () => {
+    resized.remove();
+    set.stop();
+  };
 }

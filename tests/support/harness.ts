@@ -2,7 +2,7 @@
  * Calling the plugin's RPC handlers the way the daemon does — without one.
  *
  * `call` parses the input with the contract, runs the handler with a fake
- * context whose `paseo.workspaces.ref(id).refresh()` answers from a map, and
+ * context whose `paseo.workspaces.ref(id).refresh()` and `.list()` answer from a map, and
  * parses the output with the contract too: an output that does not match its
  * schema fails the test exactly as it would fail the RPC in the daemon.
  *
@@ -37,6 +37,17 @@ export function fakeCtx(workspaces: Workspaces): PluginHandlerContext {
       ref: (id: string) => ({
         refresh: async () => (id in workspaces ? { id, workspaceDirectory: workspaces[id] } : null),
       }),
+      // One page per entry, so a test also walks the cursor.
+      list: async (opts?: { page?: { cursor?: string } }) => {
+        const ids = Object.keys(workspaces);
+        const at = opts?.page?.cursor ? Number(opts.page.cursor) : 0;
+        const id = ids[at];
+        const more = at + 1 < ids.length;
+        return {
+          entries: id === undefined ? [] : [{ id, workspaceDirectory: workspaces[id] }],
+          pageInfo: { hasMore: more, nextCursor: more ? String(at + 1) : null },
+        };
+      },
     },
   };
   return { paseo } as unknown as PluginHandlerContext;

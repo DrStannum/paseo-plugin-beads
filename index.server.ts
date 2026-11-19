@@ -1,10 +1,10 @@
 import type { PluginServerContext } from "@getpaseo/plugin/server";
 import {
   commentRpc, createRpc, editRpc, exportRpc, healthRpc, issueRpc, jobStatusRpc,
-  pingRpc, revisionRpc, searchRpc, syncRpc, treeRpc,
+  pingRpc, revisionRpc, searchRpc, syncRpc, treeRpc, workspacesRpc,
 } from "./shared/rpc.ts";
 import {
-  comment, create, edit, exportNow, health, issue, jobStatus, ping, revision, search, sync, tree, workspaceArchived,
+  comment, create, edit, exportNow, health, issue, jobStatus, ping, revision, search, sync, tree, workspaceArchived, workspaces,
 } from "./server/handlers.ts";
 import { shutdown, startup } from "./server/lifecycle.ts";
 import { beadsSettings } from "./shared/settings.ts";
@@ -22,6 +22,8 @@ export default function contribute(server: PluginServerContext) {
   server.handle(exportRpc, exportNow);
   server.handle(syncRpc, sync);
   server.handle(jobStatusRpc, jobStatus);
+  // Where the workspace header gets a Beads button.
+  server.handle(workspacesRpc, workspaces);
   // The reader's name and the refresh interval; the client reads them with useSettings.
   server.registerSettings(beadsSettings);
   // The archived workspace's project leaves the disk cache with it.

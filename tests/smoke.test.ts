@@ -13,9 +13,10 @@ import fs from "node:fs";
 import path from "node:path";
 import {
   healthRpc, issueRpc, jobStatusRpc, pingRpc, revisionRpc, searchRpc, treeRpc, editRpc, createRpc, commentRpc,
+  workspacesRpc,
 } from "../shared/rpc.ts";
 import {
-  comment, create, edit, health, issue, jobStatus, ping, revision, search, tree,
+  comment, create, edit, health, issue, jobStatus, ping, revision, search, tree, workspaces,
 } from "../server/handlers.ts";
 import { tuning } from "../server/beads/snapshot.ts";
 import { historyTuning } from "../server/beads/history.ts";
@@ -88,6 +89,44 @@ describe("workspace and project resolution", () => {
     assert.equal((await call(treeRpc, tree, { workspaceId: "gone" }, ctx)).code, "not_found");
     assert.equal((await call(treeRpc, tree, { workspaceId: "file" }, ctx)).code, "not_a_directory");
     assert.equal((await call(treeRpc, tree, { workspaceId: "rel" }, ctx)).code, "not_absolute");
+  });
+});
+
+// ── which workspaces get the header button ─────────────────────────────
+
+describe("beads.workspaces (the header button's set)", () => {
+  let stub: Stub;
+  let project: string;
+  const bare = tmpDir("pbd-bare-");
+  const shell = tmpDir("pbd-shell-");
+  fs.mkdirSync(path.join(shell, ".beads"));
+  fs.writeFileSync(path.join(shell, ".beads", "eventsData"), "");
+  before(() => {
+    stub = makeStub();
+    project = makeProject();
+    fs.mkdirSync(path.join(project, "sub"));
+    usePath(stub.dir, ORIGINAL_PATH);
+  });
+  after(() => {
+    stub.remove();
+    for (const d of [project, bare, shell]) fs.rmSync(d, { recursive: true, force: true });
+  });
+
+  it("lists the workspaces with a beads project (here or above), across pages, and runs no bd", async () => {
+    const ctx = fakeCtx({
+      ws: project, sub: path.join(project, "sub"), bare, shell, gone: "/definitely/not/here",
+    });
+    const res = await call(workspacesRpc, workspaces, {}, ctx);
+    assert.equal(res.ok, true, JSON.stringify(res));
+    assert.deepEqual(res.workspaceIds, ["ws", "sub"]);
+    assert.deepEqual(stub.calls(), []);
+  });
+
+  it("a failing daemon list is a code, not a throw", async () => {
+    const ctx = { paseo: { workspaces: { list: async () => { throw new Error("offline"); } } } } as any;
+    const res = await call(workspacesRpc, workspaces, {}, ctx);
+    assert.equal(res.ok, false);
+    assert.equal(res.code, "internal");
   });
 });
 

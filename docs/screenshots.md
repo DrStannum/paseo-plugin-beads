@@ -61,6 +61,15 @@ The panel in Paseo's right sidebar: the reader's own issues, in progress and rea
 | ![](../tests/preview-explorer-narrow-en.png) | ![](../tests/preview-explorer-noname-en.png) |
 | Paseo's narrowest explorer, 240 px, with a search on | No name set in the settings: the way to set it |
 
+## The header button
+
+The Beads button in a workspace's header (only where the workspace has a `.beads` project).
+
+| | |
+|---|---|
+| ![](../tests/preview-header-dark-en.png) | ![](../tests/preview-header-compact-ru.png) |
+| Its menu: the tab, the board, the explorer | A phone-sized window: in the header's "Workspace actions" sheet, no explorer item |
+
 ## The board
 
 The same issues laid out by status, one lane per status the project uses. The

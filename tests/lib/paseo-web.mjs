@@ -397,16 +397,17 @@ export async function resizeExplorer(page, width) {
 
 /**
  * Save tests/<name>.png cropped to the plugin panel (no Paseo chrome, no
- * sidebar). Returns the file path.
+ * sidebar). Returns the file path. `clip` crops to a page region instead
+ * (the workspace header: there is no panel to crop to).
  *
  * @param {any} page
  * @param {string} name file name without extension
- * @param {{ panel?: any, dir?: string, fullPage?: boolean }} [opts]
+ * @param {{ panel?: any, clip?: { x: number, y: number, width: number, height: number }, dir?: string, fullPage?: boolean }} [opts]
  */
 export async function shot(page, name, opts = {}) {
   const panel = opts.panel ?? page.locator('[data-testid="workspace-pane-main"] > div').nth(1);
   const file = path.join(opts.dir ?? TESTS_DIR, `${name}.png`);
-  const box = await panel.boundingBox();
+  const box = opts.clip ?? await panel.boundingBox();
   if (!box) throw new Error('beads panel is not on screen');
   await page.screenshot({ path: file, clip: box, animations: 'disabled', caret: 'hide' });
   log(`saved ${path.relative(process.cwd(), file)}`);

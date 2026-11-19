@@ -33,6 +33,12 @@
  *   preview-explorer-light-ru      the explorer alone, light, Russian (it loads the tree itself)
  *   preview-explorer-narrow-en     the explorer at Paseo's minimum 240 px, a search on
  *   preview-explorer-noname-en     no reader's name in the settings: the way to set it
+ *   preview-header-dark-en         the Beads button in the workspace header, its menu open
+ *                                  (checked: the board item opens the tab on the board, the
+ *                                  explorer item the explorer panel; a workspace without
+ *                                  .beads gets no button)
+ *   preview-header-compact-ru      a phone-sized window: the button in the header's
+ *                                  "Workspace actions" sheet, no explorer item
  *
  * Writes tests/<frame>.png. Look at them before committing.
  * Needs the local Paseo daemon (127.0.0.1:6767) with the beads plugin loaded;
@@ -359,6 +365,67 @@ try {
         }
       } finally {
         setSettings();
+      }
+    });
+  }
+  if (want('preview-header-dark-en') || want('preview-header-compact-ru')) {
+    await withWorkspace({ mode: 'bd' }, async (workspace) => {
+      // Our button, not the "Beads" item of an empty tab: it is the one with the menu chevron.
+      const button = (/** @type {any} */ page) => page.locator('button[aria-label="Beads"]:has([data-testid="plugin-button-chevron"])');
+      if (want('preview-header-dark-en')) {
+        await withWorkspace({ variant: 'bare' }, async (bare) => {
+          await withPanel({ workspace, theme: 'dark', locale: 'en', open: false }, async ({ page }) => {
+            await button(page).waitFor({ timeout: 30_000 });
+            await button(page).click();
+            const menu = page.getByText('Open Beads in the explorer', { exact: true });
+            await menu.waitFor({ timeout: 10_000 });
+            await page.mouse.move(0, 400);
+            await page.waitForTimeout(400);
+            const b = /** @type {any} */ (await button(page).boundingBox());
+            const m = /** @type {any} */ (await menu.boundingBox());
+            const width = page.viewportSize().width;
+            const x = Math.max(0, Math.min(b.x, m.x) - 240);
+            files.push(await shot(page, 'preview-header-dark-en', { clip: { x, y: 0, width: width - x, height: m.y + m.height + 24 } }));
+            await page.getByText('Open Beads board', { exact: true }).click();
+            const main = page.locator('[data-testid="workspace-pane-main"]');
+            await main.locator('[data-testid^="beads-lane-"]').first().waitFor({ timeout: 30_000 });
+            console.log('  header: "Open Beads board" opened the tab on the board');
+            await button(page).click();
+            await page.getByText('Open Beads in the explorer', { exact: true }).click();
+            await page.locator('[data-testid="workspace-explorer-sidebar"] [data-testid="beads-explorer"]').waitFor({ timeout: 30_000 });
+            console.log('  header: "Open Beads in the explorer" opened the explorer panel');
+            // The same page, now on a workspace with no .beads: the set is read, no button there.
+            await page.evaluate((/** @type {string} */ u) => {
+              history.pushState({}, '', u);
+              dispatchEvent(new PopStateEvent('popstate'));
+            }, `/h/${bare.serverId}/workspace/${bare.workspaceId}`);
+            await page.getByText(bare.name).first().waitFor({ timeout: 30_000 });
+            await page.waitForTimeout(1500);
+            assert.equal(await button(page).count(), 0, 'a workspace without .beads got a Beads button');
+            console.log('  header: no button on a workspace without .beads');
+          });
+        });
+      }
+      if (want('preview-header-compact-ru')) {
+        await withPanel({ workspace, theme: 'light', locale: 'ru', open: false }, async ({ page }) => {
+          // Phone-sized once the workspace is up (withPanel waits for the wide layout's tab row).
+          // Compact: the host moves plugin buttons into the header's "Workspace actions" sheet.
+          await page.setViewportSize({ width: 420, height: 800 });
+          await page.waitForTimeout(2500);
+          await page.locator('[data-testid="workspace-header-menu-trigger"]').first().click();
+          await page.locator('[data-testid="workspace-header-menu-content"]').getByText('Beads', { exact: true }).click();
+          const back = page.locator('[data-testid="menu-sheet-back"]');
+          await back.waitFor({ timeout: 10_000 });
+          const board = page.getByText('Открыть доску Beads', { exact: true });
+          await board.waitFor({ timeout: 10_000 });
+          assert.equal(await page.getByText('Открыть Beads в боковой панели', { exact: true }).count(), 0, 'the explorer item shows without an explorer');
+          await page.waitForTimeout(600);
+          // The sheet only (the header above it names the host), down to its last item.
+          const top = /** @type {any} */ (await back.boundingBox()).y - 24;
+          const last = /** @type {any} */ (await board.boundingBox());
+          const { width } = page.viewportSize();
+          files.push(await shot(page, 'preview-header-compact-ru', { clip: { x: 0, y: top, width, height: last.y + last.height + 24 - top } }));
+        });
       }
     });
   }

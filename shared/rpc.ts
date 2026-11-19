@@ -203,3 +203,15 @@ export const syncRpc = defineRpc({ name: "beads.sync", input: WorkspaceInput, ou
 
 /** The background job's status alone (beads.revision carries it too). */
 export const jobStatusRpc = defineRpc({ name: "beads.job-status", input: WorkspaceInput, output: JobSchema });
+
+/**
+ * Which of the host's workspaces have a beads project (a `.beads` in the
+ * directory or above it): the workspace header gets a Beads button only
+ * there. Lists the workspaces with the daemon and stats a few paths each;
+ * never runs bd and warms nothing.
+ */
+export const workspacesRpc = defineRpc({
+  name: "beads.workspaces",
+  input: z.object({}),
+  output: z.union([z.object({ ok: z.literal(true), workspaceIds: z.array(z.string()) }), FailureSchema]),
+});
