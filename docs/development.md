@@ -74,6 +74,14 @@ without an author, a parent change, the export queue, an injected export failure
 and its repair, and Sync both ways (a stale file does not overwrite newer work),
 then deletes the project.
 
+**`tests/disk.test.ts`** covers the on-disk snapshot store (`server/beads/disk.ts`)
+in a temporary directory (`CBD_CACHE_DIR`), never the real `~/.paseo`: the
+directory is 0700 and files 0600 even under an empty umask; a saved snapshot reads
+back with the same graph; a broken, truncated, foreign or other-format file reads
+as nothing and is deleted; a write cut short leaves only a temp file that no read
+sees and the sweep removes; the size limits, the idle and least-recently-used
+sweep; two processes saving at once leave one whole file.
+
 The rest are pure logic: the tree, filters and search (`tree`, `filters`), the
 board's lanes and drag arithmetic (`board`), the edit form's diff and the settings
 schema (`form`), chart aggregations and scenes (`charts`, `chart-scene`,
