@@ -17,6 +17,8 @@ export const CACHE_PROJECTS = 8;
 export const FLASH_MS = 6000;
 /** The server answered `busy` (bd still loading): ask again this soon. */
 export const BUSY_RETRY_MS = 1500;
+/** A refresh shorter than this never shows the "Refreshing…" mark (no flash on a quick answer). */
+export const REFRESH_MARK_DELAY_MS = 400;
 /** How long an unused tree / card lingers in the cache. */
 export const TREE_GC_MS = 24 * 3600 * 1000;
 export const CARD_GC_MS = 30 * 60 * 1000;
@@ -54,11 +56,31 @@ export interface TreeState {
   /** id → when a poll saw it change. */
   flashed: Record<string, number>;
   export: ExportStatus | null;
+  /**
+   * The revision held when the revision poll saw the project move past it.
+   * While it is still the one held, the rows on screen are behind; any
+   * answer of beads.tree clears it.
+   */
+  behind: string | null;
 }
 
 export const EMPTY: TreeState = {
-  tree: null, revision: null, empty: null, loadIssue: null, busy: false, failures: 0, flashed: {}, export: null,
+  tree: null, revision: null, empty: null, loadIssue: null, busy: false, failures: 0, flashed: {}, export: null, behind: null,
 };
+
+/**
+ * Whether the panel shows "Refreshing…": rows are on screen and newer ones
+ * are on their way — a tree request in flight (`fetching`), the server still
+ * loading bd (`busy`), or the poll saw the revision move past the rows held.
+ * A refresh that failed is the stale strip's to tell, not this mark's. An
+ * unchanged revision poll touches none of it, so the mark does not blink on
+ * every round.
+ */
+export function isRefreshing(s: TreeState, fetching: boolean): boolean {
+  if (!s.tree) return false; // the loading state says it already
+  if (fetching || s.busy) return true;
+  return !s.loadIssue && s.behind != null && s.behind === s.revision;
+}
 
 /** Reasons that may be answered "nothing changed"; a button press always fetches. */
 export type LoadReason = "project" | "revalidate" | "poll" | "manual" | "save";
@@ -147,7 +169,7 @@ export async function runTree(
   if (res.unchanged) {
     // Only offered when there is a tree; an answer without one asks again in full.
     if (!p.tree) return runTree(p, "manual", workspaceId, call, now);
-    return { ...p, revision: res.revision, busy: false, failures: 0, loadIssue: null, export: res.export ?? p.export };
+    return { ...p, revision: res.revision, busy: false, failures: 0, loadIssue: null, export: res.export ?? p.export, behind: null };
   }
   if (res.delta === true) {
     // A delta is only good on top of the rows it was cut from; on anything
@@ -169,7 +191,7 @@ export async function runTree(
       flashed = { ...flashed };
       for (const r of res.upsert as TreeRow[]) flashed[r.id] = t;
     }
-    return { tree: data, revision: data.revision, empty: null, loadIssue: null, busy: false, failures: 0, flashed, export: p.export };
+    return { tree: data, revision: data.revision, empty: null, loadIssue: null, busy: false, failures: 0, flashed, export: p.export, behind: null };
   }
   const data: TreeData = {
     mode: res.mode, root: res.root, beadsDir: res.beadsDir, prefix: res.prefix, revision: res.revision,
@@ -182,7 +204,7 @@ export async function runTree(
   const t = now();
   if (p.tree && soft && data.revision === p.revision) {
     // Nothing moved: keep the very object on screen, so nothing repaints.
-    return { ...p, busy: false, failures, loadIssue, empty: null };
+    return { ...p, busy: false, failures, loadIssue, empty: null, behind: null };
   }
   let flashed = keepFlashes(p.flashed, t);
   if (p.tree && (reason === "poll" || reason === "revalidate")) {
@@ -192,7 +214,7 @@ export async function runTree(
       for (const id of moved) flashed[id] = t;
     }
   }
-  return { tree: data, revision: data.revision, empty: null, loadIssue, busy: false, failures, flashed, export: p.export };
+  return { tree: data, revision: data.revision, empty: null, loadIssue, busy: false, failures, flashed, export: p.export, behind: null };
 }
 
 // ── cards ─────────────────────────────────────────────────────────────

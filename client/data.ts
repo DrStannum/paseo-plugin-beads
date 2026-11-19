@@ -39,7 +39,7 @@ import { SEARCH_DEBOUNCE_MS, SEARCH_MIN, hitsFor, type SearchHits } from "../sha
 import type { ExportStatus } from "../shared/types.ts";
 import {
   BUSY_RETRY_MS, CACHE_PROJECTS, CARD_GC_MS, EMPTY, SOFT, TREE_GC_MS,
-  cardKey, runCard, runTree, treeKey, type CardState, type LoadReason, type TreeState,
+  cardKey, isRefreshing, runCard, runTree, treeKey, type CardState, type LoadReason, type TreeState,
 } from "./load.ts";
 import { createPollers, type PollHandle, type PollSource } from "./poller.ts";
 
@@ -88,6 +88,8 @@ export interface BeadsData {
   state: TreeState;
   /** True until the first answer (or the cached one) is in. */
   loading: boolean;
+  /** Rows are on screen and newer ones are on their way (isRefreshing). */
+  refreshing: boolean;
   /** Fetch the tree now (Refresh, Retry, after a write). */
   load(reason?: LoadReason): Promise<void>;
   /**
@@ -194,7 +196,9 @@ export function useBeadsTree(hostId: string, workspaceId: string, pollMs: number
   }, [state.tree]);
 
   const loading = !query.data || (!state.tree && !state.empty);
-  return useMemo(() => ({ state, loading, load, checkNow }), [state, loading, load, checkNow]);
+  // isFetching is the query's, so every copy of the panel sees the same.
+  const refreshing = isRefreshing(state, query.isFetching);
+  return useMemo(() => ({ state, loading, refreshing, load, checkNow }), [state, loading, refreshing, load, checkNow]);
 }
 
 /**
@@ -239,6 +243,8 @@ function treeSource(
           adoptRevision(qc, hostId, workspaceId, held.revision!, res.revision);
         } else {
           fetched = true;
+          // The rows held are behind now: every copy shows "Refreshing…" until the tree is in.
+          patch((x) => (x.behind === held.revision ? x : { ...x, behind: held.revision }));
           await load("poll");
         }
       } else if (held.loadIssue && !res.loadError) {

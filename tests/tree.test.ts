@@ -7,7 +7,7 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { applyDelta, runCard, runTree, type TreeState } from "../client/load.ts";
+import { EMPTY, applyDelta, isRefreshing, runCard, runTree, type TreeState } from "../client/load.ts";
 import {
   ancestorsOf, buildIndex, compareBy, flattenTree, nextSort, relChildTree, statusBreakdown, visibility, NO_FILTERS,
 } from "../shared/tree.ts";
@@ -207,6 +207,39 @@ test("unchanged with deltas carries no counts or export: the held ones stay", as
   const calls: any[] = [];
   await runTree(first, "save", "w", async (i) => (calls.push(i), FULL));
   assert.deepEqual(calls, [{ workspaceId: "w", deltas: true }]);
+});
+
+test("refreshing: rows held while newer ones load; not before the first tree, not over a failure", async () => {
+  // Nothing on screen yet: the loading state speaks, not the mark.
+  assert.equal(isRefreshing(EMPTY, true), false);
+  assert.equal(isRefreshing({ ...EMPTY, busy: true }, false), false);
+  const first = await runTree(undefined, "project", "w", async () => FULL);
+  assert.equal(first.behind, null);
+  assert.equal(isRefreshing(first, false), false, "settled: no mark");
+  assert.equal(isRefreshing(first, true), true, "a tree request in flight (Refresh, a write's reload, the poll's)");
+  // The poll saw the revision move: behind = the revision held, until any tree answer is in.
+  const behind: TreeState = { ...first, behind: first.revision };
+  assert.equal(isRefreshing(behind, false), true);
+  const busy = await runTree(behind, "poll", "w", async () => ({ ok: false, code: "busy" }));
+  assert.equal(busy.busy, true);
+  assert.equal(isRefreshing(busy, false), true, "the server still loads bd");
+  const fresh = await runTree(busy, "poll", "w", async () => ({ ...FULL, revision: "r2" }));
+  assert.equal(fresh.behind, null);
+  assert.equal(isRefreshing(fresh, false), false, "the new rows are in: the mark goes");
+  // A delta and an unchanged answer clear it the same way.
+  const delta = await runTree({ ...fresh, behind: "r2" }, "poll", "w", async () => ({ ...FULL, delta: true, base: "r2", revision: "r3", upsert: [], removed: [] }));
+  assert.equal(isRefreshing(delta, false), false);
+  const same = await runTree({ ...delta, behind: "r3" }, "poll", "w", async () => ({ ok: true, unchanged: true, revision: "r3", mode: "bd" }));
+  assert.equal(isRefreshing(same, false), false);
+  // A failed refresh: the stale strip tells it, the mark does not hang on.
+  const failed = await runTree(behind, "poll", "w", async () => ({ ok: false, code: "timeout" }));
+  assert.equal(failed.behind, first.revision);
+  assert.equal(isRefreshing(failed, false), false);
+  assert.equal(isRefreshing(failed, true), true, "…unless it is being asked again");
+  // A behind mark left from an older revision means nothing for the rows held now.
+  assert.equal(isRefreshing({ ...fresh, behind: first.revision }, false), false);
+  // Rows kept from a cache written before this field existed.
+  assert.equal(isRefreshing({ ...first, behind: undefined } as unknown as TreeState, false), false);
 });
 
 test("cards: last good copy survives a failed reload with a note", async () => {

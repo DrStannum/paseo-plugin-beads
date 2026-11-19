@@ -1,6 +1,6 @@
 /**
- * The panel's head: title row (name, project, mode badge, interval, refresh),
- * the counts line, the "may be out of date" strip, and the tree toolbar
+ * The panel's head: title row (name, project, mode badge, "Refreshing…",
+ * interval, refresh), the counts line, the "may be out of date" strip, and the tree toolbar
  * (reference: the header/toolbar block, renderStat, renderStaleBar).
  *
  * Slots for what other tasks add — Sync / settings (pbd-125.*), search,
@@ -9,10 +9,11 @@
  */
 
 import { useWorkspace } from "@getpaseo/plugin/client";
-import { Fragment, type ReactNode } from "react";
-import { Text, View } from "react-native";
+import { Fragment, useEffect, useState, type ReactNode } from "react";
+import { ActivityIndicator, Text, View } from "react-native";
 import { STATUS_ORDER } from "../shared/charts/types.ts";
 import { useBeads } from "./beads.tsx";
+import { REFRESH_MARK_DELAY_MS } from "./data.ts";
 import { failureHead } from "./empty.tsx";
 import { POLL_CHOICES } from "../shared/settings.ts";
 import { baseName, statusLabel } from "./format.ts";
@@ -72,6 +73,7 @@ export function Header({ shown, slots, onExpandAll, onCollapseAll, compact }: { 
             </View>
           ) : null}
           {slots.badge}
+          <RefreshingMark />
         </View>
         <View style={{ flex: 1 }} />
         <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
@@ -113,6 +115,39 @@ export function Header({ shown, slots, onExpandAll, onCollapseAll, compact }: { 
         </View>
       ) : null}
       {slots.below}
+    </View>
+  );
+}
+
+/**
+ * "Refreshing…": the rows on screen are the copy already held while newer
+ * ones load (data.refreshing). It shows only once a refresh has lasted
+ * REFRESH_MARK_DELAY_MS, so a quick answer does not flash it, and goes the
+ * moment the data is in. It sits at the end of the title's group, so
+ * nothing before it moves.
+ */
+export function RefreshingMark() {
+  const { pal, t, data } = useBeads();
+  const on = data.refreshing;
+  const [shown, setShown] = useState(false);
+  useEffect(() => {
+    if (!on) {
+      setShown(false);
+      return;
+    }
+    const timer = setTimeout(() => setShown(true), REFRESH_MARK_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [on]);
+  if (!on || !shown) return null;
+  return (
+    <View
+      testID="beads-refreshing"
+      ref={titled(t.refreshingTip) as never}
+      accessibilityLabel={t.refreshing}
+      style={{ flexDirection: "row", alignItems: "center", gap: 5, alignSelf: "center" }}
+    >
+      <ActivityIndicator size={10 as never} color={pal.muted} />
+      <Text style={{ fontSize: FONT.mark + 0.5, color: pal.muted }}>{t.refreshing}</Text>
     </View>
   );
 }

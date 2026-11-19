@@ -76,7 +76,12 @@ a tree in it counts as fresh until the revision moves, so a second tab of the sa
 workspace shows the rows without asking for them. The revision poll runs once per
 workspace however many copies are mounted (Paseo keeps hidden tabs mounted), stops
 with the last one, and looks at once when the panel comes back after nobody showed
-the workspace. Only memory: nothing goes to storage, because issue
+the workspace. While newer rows are on their way (the poll saw the revision move,
+a refresh is in flight, or the server is still loading `bd` behind a disk copy) a
+quiet "Refreshing…" sits by the title; it shows only once a refresh has lasted
+0.4 s and never on a poll that finds nothing new. The new rows then replace the
+old ones in place: the selected issue, the open branches and the scroll of the
+tree and the board stay where they were. Only memory: nothing goes to storage, because issue
 text can carry secrets. A failed refresh never empties the list: the rows stay
 under a "Data may be out of date" strip with the reason and a **Retry** button; a
 card whose reload failed stays up marked "May be out of date". Each failed poll

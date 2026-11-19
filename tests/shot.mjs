@@ -12,6 +12,8 @@
  *   preview-links-dark-en          the card of an epic: children tree, comments
  *   preview-jsonl-dark-en          the same in the read-only jsonl mode
  *   preview-stale-en               a refresh failed after a good load (.beads removed)
+ *   preview-refreshing-en          rows held while newer ones load: "Refreshing…" in the title row
+ *                                  (the page holds back its beads.tree request, so it stays on)
  *   preview-empty-<locale>         a workspace with no .beads at all
  *   preview-narrow-tree-en         a pane under 900 px: the tree alone
  *   preview-narrow-card-ru         …and the card as a full overlay
@@ -84,7 +86,7 @@ const files = [];
 const ready = /** @param {any} panel */ (panel) => panel.locator('[data-testid="beads-panel"]').waitFor({ timeout: 30_000 });
 try {
   const bdFrames = ['dark', 'light'].flatMap((th) => ['en', 'ru'].map((l) => `preview-tree-${th}-${l}`))
-    .concat('preview-links-dark-en', 'preview-narrow-tree-en', 'preview-narrow-card-ru')
+    .concat('preview-links-dark-en', 'preview-refreshing-en', 'preview-narrow-tree-en', 'preview-narrow-card-ru')
     .concat(LAYOUT_FRAMES);
   if (bdFrames.some(want)) {
     await withWorkspace({ mode: 'bd' }, async (workspace) => {
@@ -104,6 +106,26 @@ try {
           await panel.locator('[data-testid="beads-rel-children"]').scrollIntoViewIfNeeded();
           await page.waitForTimeout(300);
           files.push(await shot(page, 'preview-links-dark-en', { panel }));
+        });
+      }
+      if (want('preview-refreshing-en')) {
+        await withPanel({ workspace, theme: 'dark', locale: 'en', viewport: WIDE, ready }, async ({ page, panel }) => {
+          await openFixture(panel);
+          // Swallow the page's next beads.tree requests: the refresh never
+          // lands, so the mark stays up for the shot (the rows, the open
+          // branches and the selection are what the reader keeps meanwhile).
+          await page.evaluate(() => {
+            const send = WebSocket.prototype.send;
+            WebSocket.prototype.send = function (/** @type {any} */ data) {
+              if (typeof data === 'string' && data.includes('"plugin.rpc.invoke.request"') && data.includes('"method":"beads.tree"')) return;
+              return send.call(this, data);
+            };
+          });
+          await tap(panel, 'beads-refresh');
+          await panel.locator('[data-testid="beads-refreshing"]').waitFor({ timeout: 10_000 });
+          await page.mouse.move(0, 0);
+          await page.waitForTimeout(400);
+          files.push(await shot(page, 'preview-refreshing-en', { panel }));
         });
       }
       /** @type {Record<string, [theme: 'dark' | 'light', locale: 'en' | 'ru', run: (panel: any, page: any) => Promise<void>]>} */

@@ -25,6 +25,8 @@ on this page, and the test suite checks that it stays that way.
 | jsonl mode: the export only, read-only | A workspace with no beads project |
 | ![](../tests/preview-empty-ru.png) | ![](../tests/preview-stale-en.png) |
 | The same empty state in Russian | A refresh failed after a good load: the rows stay under the "may be out of date" strip |
+| ![](../tests/preview-refreshing-en.png) | |
+| Newer data on its way: "Refreshing…" by the title, the rows, open branches and the card stay | |
 
 ## Search, filters and columns
 
