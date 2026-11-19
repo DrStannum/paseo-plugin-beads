@@ -5,6 +5,9 @@
  * context whose `paseo.workspaces.ref(id).refresh()` answers from a map, and
  * parses the output with the contract too: an output that does not match its
  * schema fails the test exactly as it would fail the RPC in the daemon.
+ *
+ * Importing it points the plugin's disk cache (CBD_CACHE_DIR) at a temporary
+ * directory of its own, removed on exit: no test ever writes ~/.paseo.
  */
 
 import fs from "node:fs";
@@ -15,6 +18,16 @@ import type { PluginHandlerContext } from "@getpaseo/plugin/server";
 import type { z } from "zod";
 import { resetForTests } from "../../server/lifecycle.ts";
 import { settleExports } from "../../server/beads/export.ts";
+
+/** The disk cache of this test process (set before any handler can run). */
+export const CACHE_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "pbd-cache-"));
+process.env.CBD_CACHE_DIR = CACHE_DIR;
+process.on("exit", () => fs.rmSync(CACHE_DIR, { recursive: true, force: true }));
+
+/** Empty the disk cache: the next load is cold again. */
+export function wipeDiskCache(): void {
+  for (const name of fs.readdirSync(CACHE_DIR)) fs.rmSync(path.join(CACHE_DIR, name), { recursive: true, force: true });
+}
 
 export type Workspaces = Record<string, string>;
 
@@ -44,10 +57,11 @@ export function tmpDir(prefix: string): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
 }
 
-/** Point PATH at a stub `bd` (or back) and start from a fresh plugin state. */
+/** Point PATH at a stub `bd` (or back) and start from a fresh plugin state, disk cache empty. */
 export function usePath(prefixDir: string | null, original: string): void {
   process.env.PATH = prefixDir ? `${prefixDir}:${original}` : original;
   resetForTests();
+  wipeDiskCache();
 }
 
 export interface Stub {

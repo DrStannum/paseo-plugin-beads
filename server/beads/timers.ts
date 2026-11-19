@@ -17,6 +17,20 @@ export function untrackTimer(t: ReturnType<typeof setTimeout>): void {
   live.delete(t);
 }
 
+/**
+ * Run `fn` after `ms` on a tracked timer that does not hold the process open.
+ * After cleanup it does not run at all.
+ */
+export function defer(fn: () => void, ms = 0): void {
+  if (stopped) return;
+  const t = setTimeout(() => {
+    live.delete(t);
+    fn();
+  }, ms);
+  t.unref?.();
+  live.add(t);
+}
+
 /** A tracked sleep. */
 export function sleep(ms: number): Promise<void> {
   if (stopped) return Promise.resolve();

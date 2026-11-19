@@ -13,7 +13,9 @@
  * Measures bd itself (list / comments, alone and four at once, the way
  * several open panels or a running export load the VM) and then the
  * handlers, in-process with a fake daemon context: a cold tree, an
- * unchanged tree, a card, three cold trees at once, the revision poll.
+ * unchanged tree, a card, three cold trees at once, the revision poll, and
+ * a restart answered from the disk cache (a temporary CBD_CACHE_DIR, see
+ * tests/support/harness.ts) — same revision, and moved (the stand-in).
  * Prints a table; it asserts only that every read answers inside the
  * daemon's 30 s and that none times out — the rest is for reading.
  * Building the 4000-issue fixture takes bd about 2.5 min.
@@ -25,8 +27,9 @@ import { issueRpc, revisionRpc, treeRpc } from "../shared/rpc.ts";
 import { issue, revision, tree } from "../server/handlers.ts";
 import { BD_LIST_TIMEOUT_MS, BD_TIMEOUT_MS } from "../server/beads/run.ts";
 import { clearCache } from "../server/beads/snapshot.ts";
+import { flushPendingSaves } from "../server/beads/disk.ts";
 import { shutdown } from "../server/lifecycle.ts";
-import { call, fakeCtx } from "./support/harness.ts";
+import { call, fakeCtx, wipeDiskCache } from "./support/harness.ts";
 // @ts-ignore -- plain JS fixture builder
 import { buildFixture } from "./fixture/build.mjs";
 
@@ -96,8 +99,19 @@ try {
   const [card2Ms] = await timed(() => call(issueRpc, issue, { ...ws, id: KEY }, ctx));
   note("beads.issue, again", `${card2Ms} ms`);
 
+  // A restart: memory gone, the disk cache kept.
+  const t1 = Date.now();
+  flushPendingSaves();
+  note("disk cache save (on the turn after the reply)", `${Date.now() - t1} ms`);
+  clearCache();
+  const [diskMs, disk] = await timed(() => call(treeRpc, tree, ws, ctx));
+  assert.equal(disk.ok, true);
+  assert.equal(disk.revision, cold.revision);
+  note("beads.tree after a restart, from disk", `${diskMs} ms, no bd`);
+
   // Three panels (or a web tab and a phone) opening the project at once: one load serves all.
   clearCache();
+  wipeDiskCache();
   const [threeMs, three] = await timed(() => Promise.all([0, 1, 2].map(() => call(treeRpc, tree, ws, ctx))));
   assert.ok(three.every((r: any) => r.ok));
   note("beads.tree, three cold at once", `${threeMs} ms for all three`);
@@ -105,6 +119,7 @@ try {
   assert.equal(rev.ok, true);
   note("beads.revision (the poll)", `${revMs} ms, runs no bd`);
 
+  assert.ok(diskMs < 1000, `the tree from disk took ${diskMs} ms: the aim is under 1 s`);
   for (const [what, ms] of [["cold tree", coldMs], ["card", cardMs]] as const) {
     assert.ok(ms < DAEMON_RPC_MS, `${what} took ${ms} ms: over the daemon's ${DAEMON_RPC_MS} ms`);
   }

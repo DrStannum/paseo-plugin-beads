@@ -82,6 +82,18 @@ as nothing and is deleted; a write cut short leaves only a temp file that no rea
 sees and the sweep removes; the size limits, the idle and least-recently-used
 sweep; two processes saving at once leave one whole file.
 
+**`tests/snapshot-disk.test.ts`** covers that store wired into the read path,
+against the stub, with a restart simulated by dropping the memory and keeping the
+files: a good load is saved after the reply, a failed one never; with the same
+revision the tree, card and search answer from the file without running `bd`;
+with a moved revision the older copy answers at once while one `bd list` runs
+behind it, and the next tree with `have` gets the fresh rows (or the old ones
+marked stale if that load failed); a missing or broken file is a cold load; an
+edit after a restart never plans against the older copy; the first revision poll
+warms a project after replying; archiving a workspace removes its file unless
+another workspace opens the same `.beads`; `contribute()` returns at once and the
+sweep runs after it, or not at all if the plugin is stopped first.
+
 The rest are pure logic: the tree, filters and search (`tree`, `filters`), the
 board's lanes and drag arithmetic (`board`), the edit form's diff and the settings
 schema (`form`), chart aggregations and scenes (`charts`, `chart-scene`,
@@ -143,9 +155,10 @@ PNGs**: they are the documentation's illustrations and regression fixtures at on
 
 `npm run bench` (`tests/bench-large.ts`) builds a project of 4000 issues with
 kilobytes of text each, times `bd list` and `bd comments` alone and four at once,
-then the handlers in-process: a cold tree, an unchanged tree, a card, three cold
-trees at once, the revision poll. It asserts only that every read answers inside
-the daemon's 30 seconds; the rest is for reading. These numbers are where the
+then the handlers in-process: a cold tree, an unchanged tree, a card, the tree
+after a restart answered from the disk cache, three cold trees at once, the
+revision poll. It asserts only that every read answers inside
+the daemon's 30 seconds and the tree from disk inside one; the rest is for reading. These numbers are where the
 15-second read timeout, the 60-second `bd list` limit and the 25-second handler
 budget come from.
 

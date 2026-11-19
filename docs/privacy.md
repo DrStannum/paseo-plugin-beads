@@ -39,6 +39,15 @@ Hence these rules, baked into the code:
 - **Nothing is persisted on the client.** The issue cache lives in memory for as
   long as the app is open. The panel's tab state keeps only ids, filters and
   layout, and the draft of a comment lives only until the panel is closed.
+- **The host keeps the last good list of each project.** So that a plugin
+  reload or a daemon restart shows the issues at once, the daemon saves the last
+  full list it read from `bd` under `~/.paseo/plugin-data/beads/` (under
+  `$PASEO_HOME` if that is set). The directory and every file in it are readable
+  by their owner only (0700 and 0600), and a file is named by a hash of the
+  project's path, not by the project. A project not opened for 30 days goes, and
+  past 256 MB in all the least recently used ones go; archiving a workspace in
+  Paseo removes its project's file. Removing the plugin does not empty the
+  directory: delete it by hand.
 - **The settings stay on the host.** Your name and the refresh interval live in
   the daemon's plugin settings, not in the project.
 - **The fixture is synthetic.** Every screenshot is rendered on a made-up set of

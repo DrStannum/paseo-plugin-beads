@@ -12,6 +12,8 @@
  *   not finish in time answers ok:true with `issue: null, reloading: true`.
  * - The background export is requested just before the reply instead of just
  *   after it (an RPC has no "after the reply").
+ * - After a restart the first read may be answered from the disk cache
+ *   (server/beads/snapshot.ts); writes always plan against fresh data.
  */
 
 import type { PluginHandlerContext } from "@getpaseo/plugin/server";
@@ -24,7 +26,9 @@ import type { Failure } from "../shared/types.ts";
 import { workspaceDirectory } from "./workspaces.ts";
 import { resolveProject, revisionOf } from "./beads/project.ts";
 import { findBd } from "./beads/run.ts";
-import { invalidateProject, loadErrorOf, loadSnapshot, type Snapshot } from "./beads/snapshot.ts";
+import {
+  forgetProject, invalidateProject, loadErrorOf, loadSnapshot, warmProject, type LoadOptions, type Snapshot,
+} from "./beads/snapshot.ts";
 import { issueCard, searchIssues, treeRow } from "./beads/card.ts";
 import { planComment, planCreate, planEdit, runComment, runCreate, runEdit } from "./beads/write.ts";
 import { exportStatus, requestExport, requestSync } from "./beads/export.ts";
@@ -46,20 +50,24 @@ interface Located {
   beadsDir: string;
 }
 
+/** Workspace id → the `.beads` it last resolved to; read when a workspace is archived. */
+const seen = new Map<string, string>();
+
 /** Workspace id → directory (via the daemon) → `.beads`. Empty states are Failures, not throws. */
 async function locate(ctx: Ctx, workspaceId: string): Promise<Located | Failure> {
   const directory = await workspaceDirectory(ctx, workspaceId);
   if (!directory) return { ok: false, code: "unknown_workspace", project: null, bdFound: Boolean(findBd()) };
   const verdict = resolveProject(directory);
   if (!verdict.ok) return { ok: false, code: verdict.code, project: verdict.project, bdFound: Boolean(findBd()) };
+  seen.set(workspaceId, verdict.beadsDir);
   return { ok: true, directory, root: verdict.root, beadsDir: verdict.beadsDir };
 }
 
 const BUSY: Failure = { ok: false, code: "busy", message: "bd is still loading this project; try again" };
 
 /** The snapshot, or null when the load overran the budget (it keeps running). */
-async function snapshotWithin(loc: Located, ms: number): Promise<Snapshot | null> {
-  const r = await within(loadSnapshot(loc.root, loc.beadsDir), Math.max(0, ms));
+async function snapshotWithin(loc: Located, ms: number, opts: LoadOptions = {}): Promise<Snapshot | null> {
+  const r = await within(loadSnapshot(loc.root, loc.beadsDir, opts), Math.max(0, ms));
   return r.done ? r.value : null;
 }
 
@@ -114,11 +122,15 @@ export function health(input: RpcInput<typeof healthRpc>, ctx: Ctx): Promise<Rpc
   });
 }
 
-/** What the panel polls. Deliberately runs no bd. */
+/**
+ * What the panel polls. Deliberately runs no bd and waits for nothing; the
+ * first poll for a project this process has not seen warms it after replying.
+ */
 export function revision(input: RpcInput<typeof revisionRpc>, ctx: Ctx): Promise<RpcOutput<typeof revisionRpc>> {
   return guarded("beads.revision", async () => {
     const loc = await locate(ctx, input.workspaceId);
     if (!loc.ok) return loc;
+    warmProject(loc.root, loc.beadsDir);
     return {
       ok: true as const,
       revision: revisionOf(loc.beadsDir),
@@ -132,7 +144,8 @@ export function tree(input: RpcInput<typeof treeRpc>, ctx: Ctx): Promise<RpcOutp
   return guarded("beads.tree", async () => {
     const loc = await locate(ctx, input.workspaceId);
     if (!loc.ok) return loc;
-    const snapshot = await snapshotWithin(loc, handlerTuning.budgetMs);
+    // A client holding the disk copy's revision waits for bd instead of being told "unchanged".
+    const snapshot = await snapshotWithin(loc, handlerTuning.budgetMs, { have: input.have });
     if (!snapshot) return BUSY;
     if (snapshot.error) return { ...loadFailure(snapshot), project: loc.root };
     // A client already holding this revision is told so instead of getting
@@ -201,7 +214,7 @@ export function search(input: RpcInput<typeof searchRpc>, ctx: Ctx): Promise<Rpc
 async function afterWrite(loc: Located, id: string, started: number) {
   invalidateProject(loc.beadsDir);
   const remaining = handlerTuning.budgetMs - (Date.now() - started);
-  const fresh = await snapshotWithin(loc, remaining);
+  const fresh = await snapshotWithin(loc, remaining, { fresh: true });
   if (!fresh) {
     requestExport(loc.root, loc.beadsDir);
     return { ok: true as const, revision: revisionOf(loc.beadsDir), issue: null, reloading: true };
@@ -214,9 +227,13 @@ async function afterWrite(loc: Located, id: string, started: number) {
   return { ok: true as const, revision: fresh.revision, issue: card, ...staleOf(fresh) };
 }
 
-/** The snapshot a write plans against, or the Failure that stops it before bd is asked. */
+/**
+ * The snapshot a write plans against, or the Failure that stops it before bd
+ * is asked. Never the disk cache's older copy: a plan diffs against what the
+ * issue is now.
+ */
 async function writeBase(loc: Located): Promise<Snapshot | Failure> {
-  const snapshot = await snapshotWithin(loc, handlerTuning.budgetMs);
+  const snapshot = await snapshotWithin(loc, handlerTuning.budgetMs, { fresh: true });
   if (!snapshot) return BUSY;
   if (snapshot.error) return { ok: false, code: snapshot.error.code, message: snapshot.error.message };
   return snapshot;
@@ -302,4 +319,34 @@ export function jobStatus(input: RpcInput<typeof jobStatusRpc>, ctx: Ctx): Promi
     if (!loc.ok) return loc;
     return { ok: true as const, export: exportStatus(loc.beadsDir) };
   });
+}
+
+// ── lifecycle ──────────────────────────────────────────────────────────
+
+/**
+ * A workspace was archived: forget its project's snapshot, in memory and on
+ * disk — unless another workspace this process has seen opens the same
+ * `.beads`. One it has not seen (opened before a restart, not asked since)
+ * may share it too; then its next open is a cold load, nothing worse.
+ */
+export function workspaceArchived(workspace: { id: string; cwd: string }): void {
+  try {
+    let beadsDir = seen.get(workspace.id) ?? null;
+    seen.delete(workspace.id);
+    if (!beadsDir) {
+      const verdict = resolveProject(workspace.cwd);
+      if (verdict.ok) beadsDir = verdict.beadsDir;
+    }
+    if (!beadsDir) return;
+    for (const other of seen.values()) if (other === beadsDir) return;
+    forgetProject(beadsDir);
+    log("disk cache: a workspace was archived, its project's snapshot dropped");
+  } catch (err) {
+    log(`workspace.archived failed: ${(err as Error)?.message ?? String(err)}`);
+  }
+}
+
+/** Tests only. */
+export function forgetWorkspacesForTests(): void {
+  seen.clear();
 }

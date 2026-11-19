@@ -4,9 +4,9 @@ import {
   pingRpc, revisionRpc, searchRpc, syncRpc, treeRpc,
 } from "./shared/rpc.ts";
 import {
-  comment, create, edit, exportNow, health, issue, jobStatus, ping, revision, search, sync, tree,
+  comment, create, edit, exportNow, health, issue, jobStatus, ping, revision, search, sync, tree, workspaceArchived,
 } from "./server/handlers.ts";
-import { shutdown } from "./server/lifecycle.ts";
+import { shutdown, startup } from "./server/lifecycle.ts";
 import { beadsSettings } from "./shared/settings.ts";
 
 export default function contribute(server: PluginServerContext) {
@@ -24,5 +24,12 @@ export default function contribute(server: PluginServerContext) {
   server.handle(jobStatusRpc, jobStatus);
   // The reader's name and the refresh interval; the client reads them with useSettings.
   server.registerSettings(beadsSettings);
+  // The archived workspace's project leaves the disk cache with it.
+  server.addHook("workspace.archive.after", async ({ workspace }) => {
+    workspaceArchived(workspace);
+  });
+  // Nothing here may wait: the daemon starts plugins one by one. The disk
+  // cache is tidied after start, and a project's snapshot is read on its first RPC.
+  startup();
   return shutdown;
 }
