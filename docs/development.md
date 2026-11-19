@@ -153,7 +153,10 @@ How it works (`tests/lib/paseo-web.mjs`):
   the page's RPCs to check that opening the explorer beside a loaded tab sends no
   `beads.tree`, and check that a picked row opens its card in the tab. In a
   narrow tab the tree and the board scripts check that a picked card takes the
-  list's place and that the way back keeps the selection and the scroll. The
+  list's place and that the way back keeps the selection and the scroll; after a
+  followed link the first button is "Back" through the chain, and the cross goes
+  straight to the list. The split frame opens a second Beads tab through Paseo's
+  own "Split pane right" and checks that each half is a narrow tab. The
   header button is checked in a wide window (its menu opens the tab, the board
   and the explorer, and a workspace without `.beads` gets no button) and in a
   phone-sized one (the button in the header's sheet, no explorer item). The

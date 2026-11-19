@@ -18,6 +18,7 @@
  *   preview-board-jsonl-en          the jsonl export only: the same board, no drag
  *   preview-board-narrow-ru         under 900 px: 220 px lanes, swiped sideways
  *                                  (checked: a pressed card takes the board's place, "Board" leads back)
+ *   preview-board-narrow-card-en    …a pressed card in the board's place, "Board" leads back
  *
  * Writes tests/<frame>.png. Look at them before committing.
  * Needs the local Paseo daemon (127.0.0.1:6767) with the beads plugin loaded.
@@ -84,7 +85,7 @@ const files = [];
 const checks = [];
 try {
   const bdFrames = ['dark', 'light'].flatMap((th) => ['en', 'ru'].map((l) => `preview-board-${th}-${l}`))
-    .concat('preview-board-selected-en', 'preview-board-drag-en', 'preview-board-dropped-en', 'preview-board-narrow-ru');
+    .concat('preview-board-selected-en', 'preview-board-drag-en', 'preview-board-dropped-en', 'preview-board-narrow-ru', 'preview-board-narrow-card-en');
   if (bdFrames.some(want)) {
     await withWorkspace({ mode: 'bd', tag: 'board' }, async (workspace) => {
       for (const theme of /** @type {const} */ (['dark', 'light'])) {
@@ -148,6 +149,16 @@ try {
           assert.notEqual(await bg('beads-bcard-demo-a1.2'), await bg(`beads-bcard-${DRAGGED}`), 'the card stays selected');
           assert.equal(await scrollLeft(null), left, 'the lanes keep their sideways scroll');
           checks.push('narrow: "Board" leads back to the board, the card stays selected, the lanes where they were');
+        });
+      }
+      if (want('preview-board-narrow-card-en')) {
+        await withPanel({ workspace, theme: 'dark', locale: 'en', viewport: NARROW, ready }, async ({ page, panel }) => {
+          await openBoard(panel);
+          await panel.locator(sel('beads-bcard-demo-b7.3')).click();
+          await panel.locator(sel('beads-card-title')).waitFor({ timeout: 30_000 });
+          assert.equal(await panel.locator(sel('beads-card-back-list')).innerText(), 'Board', 'the way back names the board');
+          await settle(page);
+          files.push(await shot(page, 'preview-board-narrow-card-en', { panel }));
         });
       }
       if (want('preview-board-drag-en') || want('preview-board-dropped-en')) {

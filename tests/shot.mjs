@@ -12,12 +12,16 @@
  *   preview-links-dark-en          the card of an epic: children tree, comments
  *   preview-jsonl-dark-en          the same in the read-only jsonl mode
  *   preview-stale-en               a refresh failed after a good load (.beads removed)
- *   preview-refreshing-en          rows held while newer ones load: "Refreshing…" in the title row
+ *   preview-refreshing-<locale>    rows held while newer ones load: "Refreshing…" in the title row
  *                                  (the page holds back its beads.tree request, so it stays on)
  *   preview-empty-<locale>         a workspace with no .beads at all
  *   preview-narrow-tree-en         a tab under 900 px: the tree alone
  *   preview-narrow-card-ru         …a picked issue: its card in the tree's place, "Tree" leads back
  *                                  (checked: the list comes back with its selection and scroll)
+ *   preview-narrow-back-en         …a link followed from that card: "Back" leads through the chain,
+ *                                  the X straight to the list (checked)
+ *   preview-split-dark-en          two Beads tabs split side by side, a card in each: how two cards
+ *                                  are read at once (Paseo's split, the second tab from "+")
  *   preview-filters-dark-en        the filter panel open, two chips on
  *   preview-labels-light-ru        the tag picker open over the panel
  *   preview-chips-light-en         filters applied: badge, removable chips
@@ -143,7 +147,8 @@ const files = [];
 const ready = /** @param {any} panel */ (panel) => panel.locator('[data-testid="beads-panel"]').waitFor({ timeout: 30_000 });
 try {
   const bdFrames = ['dark', 'light'].flatMap((th) => ['en', 'ru'].map((l) => `preview-tree-${th}-${l}`))
-    .concat('preview-links-dark-en', 'preview-refreshing-en', 'preview-narrow-tree-en', 'preview-narrow-card-ru')
+    .concat('preview-links-dark-en', 'preview-refreshing-en', 'preview-refreshing-ru', 'preview-narrow-tree-en', 'preview-narrow-card-ru')
+    .concat('preview-narrow-back-en', 'preview-split-dark-en')
     .concat(LAYOUT_FRAMES);
   if (bdFrames.some(want)) {
     await withWorkspace({ mode: 'bd' }, async (workspace) => {
@@ -165,8 +170,10 @@ try {
           files.push(await shot(page, 'preview-links-dark-en', { panel }));
         });
       }
-      if (want('preview-refreshing-en')) {
-        await withPanel({ workspace, theme: 'dark', locale: 'en', viewport: WIDE, ready }, async ({ page, panel }) => {
+      for (const [theme, locale] of /** @type {const} */ ([['dark', 'en'], ['light', 'ru']])) {
+        const name = `preview-refreshing-${locale}`;
+        if (!want(name)) continue;
+        await withPanel({ workspace, theme, locale, viewport: WIDE, ready }, async ({ page, panel }) => {
           await openFixture(panel);
           // Swallow the page's next beads.tree requests: the refresh never
           // lands, so the mark stays up for the shot (the rows, the open
@@ -182,7 +189,7 @@ try {
           await panel.locator('[data-testid="beads-refreshing"]').waitFor({ timeout: 10_000 });
           await page.mouse.move(0, 0);
           await page.waitForTimeout(400);
-          files.push(await shot(page, 'preview-refreshing-en', { panel }));
+          files.push(await shot(page, name, { panel }));
         });
       }
       /** @type {Record<string, [theme: 'dark' | 'light', locale: 'en' | 'ru', run: (panel: any, page: any) => Promise<void>]>} */
@@ -269,6 +276,46 @@ try {
           assert.equal(await panel.locator('[data-testid="beads-card-overlay"]').count(), 0, 'no overlay');
           files.push(await shot(page, 'preview-narrow-card-ru', { panel }));
           await narrowWayBack(page, panel);
+        });
+      }
+      if (want('preview-narrow-back-en')) {
+        await withPanel({ workspace, theme: 'dark', locale: 'en', viewport, ready }, async ({ page, panel }) => {
+          await openFixture(panel);
+          // FIXTURE.selected is blocked by demo-a1.2: follow that link from its card.
+          await panel.locator('[data-testid="beads-relrow-demo-a1.2"]').click();
+          await panel.locator('[data-testid="beads-card-title"]').filter({ hasText: 'Permission matrix' }).waitFor({ timeout: 30_000 });
+          assert.equal(await panel.locator('[data-testid="beads-card-back"]').count(), 1, 'a followed link gives "Back"');
+          assert.equal(await panel.locator('[data-testid="beads-card-back-list"]').count(), 0, '"Back" stands in for "Tree"');
+          await page.mouse.move(0, 0);
+          await page.waitForTimeout(400);
+          files.push(await shot(page, 'preview-narrow-back-en', { panel }));
+          await panel.locator('[data-testid="beads-card-back"]').click();
+          await panel.locator('[data-testid="beads-card-title"]').filter({ hasText: 'Manager group' }).waitFor({ timeout: 30_000 });
+          assert.equal(await panel.locator('[data-testid="beads-card-back-list"]').count(), 1, 'at the chain\'s start "Tree" is back');
+          await panel.locator('[data-testid="beads-relrow-demo-a1.2"]').click();
+          await panel.locator('[data-testid="beads-card-title"]').filter({ hasText: 'Permission matrix' }).waitFor({ timeout: 30_000 });
+          await panel.locator('[data-testid="beads-card-close"]').click();
+          await panel.locator('[data-testid="beads-tree"]').waitFor({ state: 'visible', timeout: 10_000 });
+          console.log('  narrow: a followed link gives "Back" through the chain; the X goes straight to the list');
+        });
+      }
+      if (want('preview-split-dark-en')) {
+        await withPanel({ workspace, theme: 'dark', locale: 'en', viewport: WIDE, ready }, async ({ page, panel }) => {
+          // Paseo's own split: the pane menu's "Split pane right", then the new pane's Beads item.
+          await page.locator('[data-testid="workspace-pane-main"] [data-testid="workspace-split-pane-menu"]').click();
+          await page.locator('[data-testid="workspace-split-pane-right"]').click();
+          const right = page.locator('[data-testid^="workspace-pane-pane_"]').first();
+          await right.locator('[data-testid="workspace-new-tab-plugin:beads:beads"]').click();
+          const second = right.locator('[data-testid="beads-panel"]');
+          await second.waitFor({ timeout: 30_000 });
+          await openFixture(panel);
+          await openFixture(second, { select: 'demo-a1.2' });
+          for (const p of [panel, second]) assert.equal(await p.locator('[data-testid="beads-tree"]').isVisible(), false, 'each split half is a narrow tab');
+          const boxes = [await page.locator('[data-testid="workspace-pane-main"]').boundingBox(), await right.boundingBox()];
+          const x = Math.min(...boxes.map((b) => b.x));
+          const y = Math.min(...boxes.map((b) => b.y));
+          const clip = { x, y, width: Math.max(...boxes.map((b) => b.x + b.width)) - x, height: Math.max(...boxes.map((b) => b.y + b.height)) - y };
+          files.push(await shot(page, 'preview-split-dark-en', { clip }));
         });
       }
     });

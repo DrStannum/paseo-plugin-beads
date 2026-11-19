@@ -25,8 +25,8 @@ on this page, and the test suite checks that it stays that way.
 | jsonl mode: the export only, read-only | A workspace with no beads project |
 | ![](../tests/preview-empty-ru.png) | ![](../tests/preview-stale-en.png) |
 | The same empty state in Russian | A refresh failed after a good load: the rows stay under the "may be out of date" strip |
-| ![](../tests/preview-refreshing-en.png) | |
-| Newer data on its way: "Refreshing…" by the title, the rows, open branches and the card stay | |
+| ![](../tests/preview-refreshing-en.png) | ![](../tests/preview-refreshing-ru.png) |
+| Newer data on its way: "Refreshing…" by the title, the rows, open branches and the card stay | The same in Russian, light |
 
 ## Search, filters and columns
 
@@ -47,8 +47,10 @@ on this page, and the test suite checks that it stays that way.
 |---|---|
 | ![](../tests/preview-splitter-dark-en.png) | ![](../tests/preview-narrow-tree-en.png) |
 | The card pane dragged wider with the splitter | A tab under 900 px: the tree alone |
-| ![](../tests/preview-narrow-card-ru.png) | |
-| …a picked issue: its card in the tree's place, "Tree" leads back | |
+| ![](../tests/preview-narrow-card-ru.png) | ![](../tests/preview-narrow-back-en.png) |
+| …a picked issue: its card in the tree's place, "Tree" leads back | …a link followed from that card: "Back" leads through the chain, the cross straight to the list |
+| ![](../tests/preview-split-dark-en.png) | |
+| Two cards side by side: a second Beads tab from "+", split beside the first; each half is a narrow tab | |
 
 ## In the explorer
 
@@ -87,6 +89,8 @@ count in a lane header is the whole lane, not the cards drawn in it.
 | Mid-drag: the card under the pointer, the target lane lit | After the drop: the card in its new lane, the status written by bd |
 | ![](../tests/preview-board-jsonl-en.png) | ![](../tests/preview-board-narrow-ru.png) |
 | jsonl mode: the same board, nothing moves | A narrow tab: narrower lanes, swiped sideways |
+| ![](../tests/preview-board-narrow-card-en.png) | |
+| …a pressed card in the board's place, "Board" leads back | |
 
 ## Charts: breakdowns
 
