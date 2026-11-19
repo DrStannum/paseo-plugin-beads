@@ -77,7 +77,7 @@ More pictures: [the whole interface, screenshot by screenshot](docs/screenshots.
 ## Install
 
 ```bash
-paseo plugin install https://github.com/DrStannum/paseo-plugin-beads.git
+paseo plugin install github:DrStannum/paseo-plugin-beads
 # or, from a local checkout:
 paseo plugin install /path/to/paseo-plugin-beads
 ```
@@ -89,8 +89,9 @@ the Command Center, or use the Beads button in the workspace header. The compact
 panel for the explorer is added from the explorer's own **+** menu. The plugin's
 settings page sits under Paseo's **Settings**, next to the other plugins.
 
-The repository URL above is the intended home of the project; until it is
-published there, install from a local checkout.
+The same source, `github:DrStannum/paseo-plugin-beads`, can be pasted into
+**Settings → Plugins → Plugin source** instead of running the command; add
+`--ref v0.2.0` to the command to pin a release rather than follow `main`.
 
 ## Documentation
 

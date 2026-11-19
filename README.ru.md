@@ -79,7 +79,7 @@ git-коммит.
 ## Установка
 
 ```bash
-paseo plugin install https://github.com/DrStannum/paseo-plugin-beads.git
+paseo plugin install github:DrStannum/paseo-plugin-beads
 # или из локальной копии:
 paseo plugin install /path/to/paseo-plugin-beads
 ```
@@ -92,8 +92,9 @@ paseo plugin install /path/to/paseo-plugin-beads
 меню **+**. Страница настроек плагина находится в «Настройках» Paseo, рядом с
 другими плагинами.
 
-Адрес репозитория выше — задуманный дом проекта; пока он там не опубликован,
-ставьте из локальной копии.
+Тот же источник, `github:DrStannum/paseo-plugin-beads`, можно вставить в поле
+**Plugin source** в «Настройках» Paseo (раздел **Plugins**) вместо команды; чтобы
+закрепить выпуск, а не следовать за `main`, добавьте к команде `--ref v0.2.0`.
 
 ## Документация
 
