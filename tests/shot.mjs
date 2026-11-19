@@ -24,8 +24,6 @@
  *   preview-search-key-en          a whole issue key: that issue only
  *   preview-columns-light-en       the column panel, Assignee + Updated on
  *   preview-link-cols-dark-en      a card's linked-list column picker
- *   preview-focus-dark-en          two-card mode: pinned left, a link right
- *   preview-focus-light-ru         …the same, light / ru
  *   preview-splitter-dark-en       the card pane dragged wider
  *
  * Writes tests/<frame>.png. Look at them before committing.
@@ -60,7 +58,7 @@ async function openFixture(/** @type {any} */ panel, /** @type {{ select?: boole
 
 const LAYOUT_FRAMES = [
   'preview-filters-dark-en', 'preview-labels-light-ru', 'preview-chips-light-en', 'preview-search-dark-en', 'preview-search-key-en',
-  'preview-columns-light-en', 'preview-link-cols-dark-en', 'preview-focus-dark-en', 'preview-focus-light-ru', 'preview-splitter-dark-en',
+  'preview-columns-light-en', 'preview-link-cols-dark-en', 'preview-splitter-dark-en',
 ];
 
 /** Click by test id inside the panel. */
@@ -173,20 +171,6 @@ try {
           await tap(panel, 'beads-relcols-children');
           await tap(panel, 'beads-relcol-assignee');
           await page.waitForTimeout(200);
-        }],
-        'preview-focus-dark-en': ['dark', 'en', async (panel) => {
-          await openFixture(panel, { select: 'demo-a1.3' });
-          await tap(panel, 'beads-card-pin');
-          await panel.locator('[data-testid="beads-card-focus"] [data-testid="beads-relrow-demo-a1"]').first().click();
-          await panel.locator('[data-testid="beads-card"] [data-testid="beads-card-title"]').waitFor({ timeout: 30_000 });
-          await panel.locator('[data-testid="beads-card-focus"] [data-testid="beads-card-title"]').scrollIntoViewIfNeeded();
-        }],
-        'preview-focus-light-ru': ['light', 'ru', async (panel) => {
-          await openFixture(panel, { select: 'demo-b7' });
-          await tap(panel, 'beads-card-pin');
-          await panel.locator('[data-testid="beads-card-focus"] [data-testid="beads-relrow-demo-b7.1"]').first().click();
-          await panel.locator('[data-testid="beads-card"] [data-testid="beads-card-title"]').waitFor({ timeout: 30_000 });
-          await panel.locator('[data-testid="beads-card-focus"] [data-testid="beads-card-title"]').scrollIntoViewIfNeeded();
         }],
         'preview-splitter-dark-en': ['dark', 'en', async (panel, page) => {
           await openFixture(panel);

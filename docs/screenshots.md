@@ -45,10 +45,8 @@ on this page, and the test suite checks that it stays that way.
 
 | | |
 |---|---|
-| ![](../tests/preview-splitter-dark-en.png) | ![](../tests/preview-focus-dark-en.png) |
-| The card pane dragged wider with the splitter | Two-card mode: the pinned card on the left, a linked issue on the right |
-| ![](../tests/preview-focus-light-ru.png) | ![](../tests/preview-narrow-tree-en.png) |
-| Two-card mode, light, Russian | A pane under 900 px: the tree alone |
+| ![](../tests/preview-splitter-dark-en.png) | ![](../tests/preview-narrow-tree-en.png) |
+| The card pane dragged wider with the splitter | A pane under 900 px: the tree alone |
 | ![](../tests/preview-narrow-card-ru.png) | |
 | …and the card as an overlay over the whole panel | |
 

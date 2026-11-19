@@ -1,5 +1,6 @@
 /**
- * The panel's client state: selection and history, the expanded branches,
+ * The panel's client state: the selection and the way back to the cards it
+ * came from, the expanded branches,
  * filters and quick search, sort and columns, the view, and the card's own
  * list settings — one reducer, one context.
  *
@@ -26,6 +27,8 @@ export type View = "tree" | "board" | "charts";
 
 /** Cap on remembered expanded branches (reference: 5000). */
 const EXPANDED_CAP = 5000;
+/** Cap on the cards "Back" can return to. */
+export const BACK_CAP = 50;
 
 const SortSchema = z
   .object({ key: z.string().refine((k) => k in SORTERS), dir: z.union([z.literal(1), z.literal(-1)]) })
@@ -92,26 +95,32 @@ export const TAB_DEFAULT: TabState = {
 
 /** The whole client state: what the tab remembers plus what lives only while mounted. */
 export interface UiState extends TabState, ChartsLive {
-  /** Card navigation (reference back/forward). */
-  history: string[];
-  historyPos: number;
+  /**
+   * The cards a link was followed from, newest last: "Back" returns to them.
+   * Picking an issue in the tree or on the board starts over; not remembered.
+   * Windows, splits and a second card are Paseo's tabs, not the panel's.
+   */
+  backStack: string[];
   /** Branches open in a card's children list. */
   relExpanded: string[];
   /** Bumped when an issue should be scrolled into view in the tree. */
   reveal: { id: string; seq: number } | null;
-  /** Two-card mode: the card pinned in the left pane (reference focusId); not remembered. */
-  focusId: string | null;
   /** Unsent comments per issue: they survive switching cards, not closing the tab. */
   drafts: Record<string, string>;
 }
 
 export type Action =
-  | { type: "select"; id: string | null; history?: boolean }
+  /** A pick in the tree or on the board: a fresh start, nothing to go back to. */
+  | { type: "select"; id: string | null }
+  /** Return to the card the last link was followed from. */
   | { type: "back" }
-  | { type: "forward" }
   | { type: "toggleExpanded"; id: string }
   | { type: "setExpanded"; ids: string[] }
-  /** Open the ancestors, show closed issues if the target is one, select it and scroll to it. */
+  /**
+   * Follow a link: open the ancestors, show closed issues if the target is
+   * one, select it and scroll to it; the card it was followed from goes on the
+   * back stack.
+   */
   | { type: "reveal"; id: string; ancestors: string[]; closed: boolean }
   | { type: "showClosed"; on: boolean }
   | { type: "sort"; sort: Sort | null }
@@ -122,12 +131,8 @@ export type Action =
   /** "Reset all filters": the filters and the search box. */
   | { type: "resetFilters" }
   | { type: "cardWidth"; width: number | null }
-  /** Two-card mode: move the card to the left pane, clear the right one. */
-  | { type: "pin"; id: string }
-  /** The pinned card goes back to the right, the tree to the left. */
-  | { type: "unpin" }
-  /** Close both cards. */
-  | { type: "closeAll" }
+  /** Close the card (back to the bare tree / board). */
+  | { type: "close" }
   | { type: "toggleSection"; key: string }
   | { type: "relSort"; sort: Sort }
   | { type: "relColumns"; columns: string[] }
@@ -142,24 +147,23 @@ function toggle(list: string[], id: string): string[] {
   return list.indexOf(id) >= 0 ? list.filter((x) => x !== id) : list.concat(id).slice(-EXPANDED_CAP);
 }
 
-function pushHistory(s: UiState, id: string): Pick<UiState, "history" | "historyPos"> {
-  const history = s.history.slice(0, s.historyPos + 1);
-  if (history[history.length - 1] !== id) history.push(id);
-  return { history, historyPos: history.length - 1 };
+/** The back stack after leaving the open card for `id` (no step from a card to itself). */
+function pushBack(s: UiState, id: string): string[] {
+  const from = s.selectedId;
+  if (!from || from === id) return s.backStack;
+  return s.backStack.concat(from).slice(-BACK_CAP);
 }
 
 export function reducer(s: UiState, a: Action): UiState {
   if (isChartsAction(a)) return chartsReducer(s, a);
   switch (a.type) {
     case "select":
-      if (!a.id) return { ...s, selectedId: null };
-      return { ...s, selectedId: a.id, ...(a.history === false ? {} : pushHistory(s, a.id)) };
-    case "back":
-      if (s.historyPos <= 0) return s;
-      return { ...s, historyPos: s.historyPos - 1, selectedId: s.history[s.historyPos - 1]! };
-    case "forward":
-      if (s.historyPos >= s.history.length - 1) return s;
-      return { ...s, historyPos: s.historyPos + 1, selectedId: s.history[s.historyPos + 1]! };
+      return { ...s, selectedId: a.id, backStack: [] };
+    case "back": {
+      if (!s.backStack.length) return s;
+      const backStack = s.backStack.slice(0, -1);
+      return { ...s, selectedId: s.backStack[s.backStack.length - 1]!, backStack };
+    }
     case "toggleExpanded":
       return { ...s, expanded: toggle(s.expanded, a.id) };
     case "setExpanded":
@@ -171,7 +175,7 @@ export function reducer(s: UiState, a: Action): UiState {
         expanded: add.length ? s.expanded.concat(add).slice(-EXPANDED_CAP) : s.expanded,
         showClosed: s.showClosed || a.closed,
         selectedId: a.id,
-        ...pushHistory(s, a.id),
+        backStack: pushBack(s, a.id),
         reveal: { id: a.id, seq: (s.reveal?.seq ?? 0) + 1 },
       };
     }
@@ -194,13 +198,8 @@ export function reducer(s: UiState, a: Action): UiState {
       return { ...s, filters: { ...NO_FILTERS }, query: "" };
     case "cardWidth":
       return { ...s, cardWidth: a.width == null ? null : Math.round(a.width) };
-    case "pin":
-      return { ...s, focusId: a.id, selectedId: null };
-    case "unpin":
-      if (!s.focusId) return s;
-      return { ...s, focusId: null, selectedId: s.focusId, ...pushHistory(s, s.focusId), reveal: { id: s.focusId, seq: (s.reveal?.seq ?? 0) + 1 } };
-    case "closeAll":
-      return { ...s, focusId: null, selectedId: null };
+    case "close":
+      return { ...s, selectedId: null, backStack: [] };
     case "toggleSection":
       return { ...s, collapsedSections: toggle(s.collapsedSections, a.key) };
     case "relSort":
@@ -253,12 +252,10 @@ export function StoreProvider({ tab, children }: { tab: PluginTab; children: Rea
   const [saved, save] = useTabState(tab, TabStateSchema as unknown as z.ZodType<TabState>, TAB_DEFAULT);
   const [ui, dispatch] = useReducer(reducer, saved, (t: TabState): UiState => ({
     ...t,
-    history: t.selectedId ? [t.selectedId] : [],
-    historyPos: t.selectedId ? 0 : -1,
+    backStack: [],
     relExpanded: [],
     ...CHARTS_LIVE_INIT,
     reveal: t.selectedId ? { id: t.selectedId, seq: 1 } : null,
-    focusId: null,
     drafts: {},
   }));
   const last = useRef<string>("");

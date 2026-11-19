@@ -322,15 +322,9 @@ const en = {
 
   copyId: 'Copy id',
   copied: 'copied',
-  pin: 'Open in the left pane and browse its links',
-  unpin: 'Put this card back on the right and bring the tree back',
-  closeAll: 'Close both cards and return to the tree',
   cardFailed: 'Could not load this issue',
-  pickRelated: 'Pick a linked issue',
-  pickRelatedHint: 'Click any link in the card on the left — it opens here, next to it.',
   close: 'Close',
   back: 'Back',
-  forward: 'Forward',
 
   fDescription: 'Description',
   fDesign: 'Design',
@@ -751,15 +745,9 @@ const ru: Strings = {
 
   copyId: 'Скопировать id',
   copied: 'скопировано',
-  pin: 'Развернуть слева и ходить по связям',
-  unpin: 'Вернуть карточку вправо, а дерево — влево',
-  closeAll: 'Закрыть обе карточки и вернуться к дереву',
   cardFailed: 'Не удалось загрузить задачу',
-  pickRelated: 'Выберите связанную задачу',
-  pickRelatedHint: 'Кликните любую связь в карточке слева — она откроется здесь, рядом.',
   close: 'Закрыть',
   back: 'Назад',
-  forward: 'Вперёд',
 
   fDescription: 'Описание',
   fDesign: 'Дизайн',

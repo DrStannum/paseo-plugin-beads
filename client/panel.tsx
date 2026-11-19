@@ -6,15 +6,16 @@
  * This file only composes. Where later features plug in:
  * - HeaderSlots (client/header.tsx): Sync, settings, search, filters,
  *   columns, the view switch, New issue.
- * - CardSlots (client/card.tsx): sub-issue / edit / pin buttons, the status
+ * - CardSlots (client/card.tsx): sub-issue / edit buttons, the status
  *   menu, the comment box, label → filter.
  * - `ui.view` (client/store.tsx) picks the body: the board takes the tree's
  *   place (the card pane only shows once an issue is picked), the charts
  *   take the place of the tree + card pair.
  * - The card pane: a dragged width (client/splitter.tsx, web) clamped by
  *   cardPaneWidth(), else the reference's 55/45 split; a fixed share on native.
- * - Two-card mode (`ui.focusId`): the pinned card takes the tree's place on
- *   the left, the right pane keeps showing the selected card.
+ *
+ * The panel draws one screen of a Paseo tab and imitates no windows: a second
+ * card side by side is a second tab or a split, which Paseo owns.
  */
 
 import type { PluginWorkspacePanelProps } from "@getpaseo/plugin/client";
@@ -110,8 +111,7 @@ function Body({ compactHost }: { compactHost: boolean }) {
     if (next !== ui.filters) dispatch({ type: "filters", filters: next });
   }, [rows, options, ui.filters, dispatch]);
 
-  const focusId = ui.focusId;
-  const panel = focusId ? null : tool === "columns" && ui.view !== "tree" ? null : tool;
+  const panel = tool === "columns" && ui.view !== "tree" ? null : tool;
   const headerSlots: HeaderSlots = {
     ...HEADER_SLOTS,
     viewSwitch: <ViewSwitch />,
@@ -121,7 +121,7 @@ function Body({ compactHost }: { compactHost: boolean }) {
         <ToolbarButtons open={panel} onOpen={setTool} />
       </>
     ),
-    below: focusId ? null : (
+    below: (
       <>
         {panel === "filters" ? <FilterPanel options={options} /> : null}
         {panel === "columns" ? <ColumnPanel /> : null}
@@ -147,8 +147,8 @@ function Body({ compactHost }: { compactHost: boolean }) {
   else if (flat && !flat.nodes.length) empty = <EmptyState kind="filtered" />;
 
   const hasCard = Boolean(ui.selectedId) && Boolean(tree);
-  const board = ui.view === "board" && !focusId;
-  const charts = ui.view === "charts" && !focusId;
+  const board = ui.view === "board";
+  const charts = ui.view === "charts";
   const pane = { borderWidth: 1, borderColor: pal.border, borderRadius: 10, backgroundColor: pal.card, overflow: "hidden" as const };
   const pad = narrow ? 10 : 18;
   // What the tree and the card split between them; the handle takes the gap.
@@ -175,9 +175,7 @@ function Body({ compactHost }: { compactHost: boolean }) {
         ) : (
           <>
             <View testID={board ? "beads-view-board" : undefined} style={[pane, { flex: 1, minWidth: 0 }]}>
-              {focusId ? (
-                <CardPane key={`focus:${focusId}`} id={focusId} focus compact={narrow} slots={cardSlots} />
-              ) : board ? (
+              {board ? (
                 <BoardView passes={passes ?? NONE} compact={narrow} />
               ) : (
                 <Tree nodes={flat?.nodes ?? []} empty={empty} />

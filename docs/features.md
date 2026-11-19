@@ -172,7 +172,7 @@ ellipsis.
 it does on a phone) the panel becomes one column: the card opens as an overlay
 over the whole panel, and while no issue is selected there is no overlay at all.
 The board narrows its lanes so one and a hint of the next fit, and is swiped
-sideways. The two-card button and the splitter are hidden there.
+sideways. The splitter is hidden there.
 
 **Card width.** On the web and in the desktop app there is a splitter between the
 list and the card: drag it to give the card more room; a double click restores the
@@ -213,7 +213,7 @@ any of the text blocks or a comment becomes pressable, but only when the project
 actually holds that issue, and never inside a code span, a code block or an
 existing link. Pressing one opens that issue: it expands the branch in the tree,
 scrolls to the row and, if the issue is closed while closed issues are hidden,
-turns "Show closed" on; in two-card mode it opens beside the pinned card.
+turns "Show closed" on.
 
 **The status is a control, not a caption.** Pressing it opens the list of statuses
 and picking one writes it straight away, through the same `bd close` / `bd reopen`
@@ -227,8 +227,11 @@ header, a column picker, and for children a progress bar over their statuses,
 keyed by a legend in the bar's own colours. The children block is a tree: a child
 with children of its own gets a twisty, folded until asked. Each block folds away
 from its header and keeps its count. Following a link expands the branch in the
-tree, scrolls to the issue and highlights it; there is back/forward navigation
-across visited cards.
+tree, scrolls to the issue and highlights it; **Back** in the card header then
+returns to the card the link was followed from. It shows only when there is one
+to return to, and picking an issue in the tree or on the board starts over. To
+read two cards side by side, open a second Beads tab from the "+" menu and split
+it beside the first: tabs and splits belong to Paseo, not to the panel.
 
 ![A card with its children as a sortable table, a progress bar over their statuses and the comment thread](../tests/preview-links-dark-en.png)
 
@@ -280,14 +283,6 @@ back in step, both ways, never letting older data overwrite newer; the badge nex
 to it says what is running and, when it is done, what came in from the file. The
 details are in
 [How writing works](writing.md#sync-putting-the-file-and-the-database-back-in-step).
-
-**Two-card mode.** The pin button in the card header moves the open card into the
-left pane, in place of the tree (the toolbar and counters leave with it). From
-then on any link inside the pinned card opens on the right, next to it: handy for
-working through an epic by its children, or reading an issue together with its
-blocker. The same button sends the card back; the close button closes both.
-
-![Two-card mode: the pinned card on the left, a linked issue on the right](../tests/preview-focus-dark-en.png)
 
 `ready` carries the same meaning as `bd ready`: the issue is open and all its
 blockers are closed. It is computed from the snapshot without a separate call,

@@ -1,5 +1,5 @@
 /**
- * The issue card (reference paintCard and its helpers): history and close,
+ * The issue card (reference paintCard and its helpers): back and close,
  * the key (copyable) beside the title, type / status / priority / readiness,
  * the properties, the four text blocks as markdown with issue keys as links,
  * the linked-issue tables, and the comment thread.
@@ -24,7 +24,7 @@ import { FONT, MONO, MONO_DOM, mix, type Palette } from "./theme.ts";
 import { Backdrop, Btn, Chevron, LabelChip, Mark, PriIcon, StatusDot, TypeGlyph, titled } from "./ui.tsx";
 
 export interface CardSlots {
-  /** Buttons between the history arrows and Close (new sub-issue, edit, pin). */
+  /** Buttons between Back and Close (new sub-issue, edit). */
   headerActions?: (card: Card | null) => ReactNode;
   /** Replaces the read-only status label (the status menu). */
   statusControl?: (card: Card) => ReactNode;
@@ -62,23 +62,21 @@ function SecLabel({ pal, text }: { pal: Palette; text: string }) {
 }
 
 /**
- * One card pane. `focus` is the card pinned in the left pane of two-card
- * mode (reference paintCard isFocus): no history arrows there (history
- * belongs to the pane you navigate in), and its pin button unpins. On a
- * narrow screen (`compact`) there is one pane, so no pin at all.
+ * The card pane. "Back" shows only after a link was followed from a card and
+ * returns to it; there is no forward, no pin, no second card — a reader who
+ * wants two cards side by side has Paseo's own tabs and splits.
  */
-export function CardPane({ id, compact, slots, focus = false }: { id: string | null; compact: boolean; slots: CardSlots; focus?: boolean }) {
+export function CardPane({ id, compact, slots }: { id: string | null; compact: boolean; slots: CardSlots }) {
   const b = useBeads();
   const { pal, t, data } = b;
   const { ui, dispatch } = useStore();
   const { data: cached, loading } = useCard(b.hostId, b.workspaceId, id, data.state.revision);
-  const twoCards = Boolean(ui.focusId);
 
   if (!id) {
     return (
       <View testID="beads-card-empty" style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 28, gap: 6 }}>
-        <Text style={{ color: pal.ink, fontSize: 15, fontWeight: "600" }}>{twoCards ? t.pickRelated : t.pickIssue}</Text>
-        <Text style={{ color: pal.muted, fontSize: FONT.md, textAlign: "center", maxWidth: 360 }}>{twoCards ? t.pickRelatedHint : t.pickIssueHint}</Text>
+        <Text style={{ color: pal.ink, fontSize: 15, fontWeight: "600" }}>{t.pickIssue}</Text>
+        <Text style={{ color: pal.muted, fontSize: FONT.md, textAlign: "center", maxWidth: 360 }}>{t.pickIssueHint}</Text>
       </View>
     );
   }
@@ -86,14 +84,9 @@ export function CardPane({ id, compact, slots, focus = false }: { id: string | n
   const card = cached?.card && cached.card.id === id ? cached.card : null;
   const row = b.index?.byId.get(id);
   return (
-    <View testID={focus ? "beads-card-focus" : "beads-card"} style={{ flex: 1, minWidth: 0 }}>
+    <View testID="beads-card" style={{ flex: 1, minWidth: 0 }}>
       <View style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 14, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: pal.border }}>
-        {focus ? null : (
-          <>
-            <Btn pal={pal} icon="ChevronLeft" title={t.back} testID="beads-card-back" disabled={ui.historyPos <= 0} onPress={() => dispatch({ type: "back" })} />
-            <Btn pal={pal} icon="ChevronRight" title={t.forward} testID="beads-card-forward" disabled={ui.historyPos >= ui.history.length - 1} onPress={() => dispatch({ type: "forward" })} />
-          </>
-        )}
+        {ui.backStack.length ? <Btn pal={pal} icon="ChevronLeft" title={t.back} testID="beads-card-back" onPress={() => dispatch({ type: "back" })} /> : null}
         <View style={{ flex: 1 }} />
         {card && cached?.note ? (
           <View
@@ -104,18 +97,7 @@ export function CardPane({ id, compact, slots, focus = false }: { id: string | n
           </View>
         ) : null}
         {slots.headerActions?.(card)}
-        {compact ? null : (
-          <Btn
-            pal={pal}
-            icon={focus ? "Minimize2" : "Maximize2"}
-            title={focus ? t.unpin : t.pin}
-            testID={focus ? "beads-card-unpin" : "beads-card-pin"}
-            pressed={focus}
-            onPress={() => dispatch(focus ? { type: "unpin" } : { type: "pin", id })}
-          />
-        )}
-        {/* One close for the whole thing: both cards go, the tree comes back. */}
-        <Btn pal={pal} icon="X" title={twoCards ? t.closeAll : t.close} testID={focus ? "beads-card-focus-close" : "beads-card-close"} onPress={() => dispatch({ type: "closeAll" })} />
+        <Btn pal={pal} icon="X" title={t.close} testID="beads-card-close" onPress={() => dispatch({ type: "close" })} />
       </View>
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: compact ? 14 : 16, paddingTop: 14, paddingBottom: 28 }}>
         {card ? (

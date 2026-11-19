@@ -90,10 +90,9 @@ export function Header({ shown, slots, onExpandAll, onCollapseAll, compact }: { 
           {slots.settings}
         </View>
       </View>
-      {/* A pinned card (two-card mode) takes the list's place, and its controls step aside with it. */}
-      {ui.focusId ? null : <StatLine shown={shown} />}
+      <StatLine shown={shown} />
       <StaleBar />
-      {hasRows && !ui.focusId ? (
+      {hasRows ? (
         <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginTop: 4, flexWrap: "wrap", zIndex: 5 }}>
           {slots.toolbarStart}
           <View style={{ flex: 1 }} />
