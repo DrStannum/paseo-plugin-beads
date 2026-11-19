@@ -16,6 +16,25 @@ remembers between visits (the open branches, the selection, the filters, the
 columns, the sort, the view, the card width) is kept in the panel's own tab state,
 which Paseo stores with the tab, so each workspace keeps its own.
 
+**In the explorer.** Paseo's right sidebar (the explorer) gets its own Beads
+panel, not a smaller copy of the tab: your work at a glance. Add it from the
+explorer's **+** menu, or type **Open Beads in the explorer** in the Command
+Center (on a phone-sized window there is no explorer, and that opens the tab
+instead). It lists the issues assigned to you, in two foldable sections: **In
+progress**, then **Ready** (open, every blocker closed, the same rule as the
+tab's "ready" and `bd ready`), the most urgent first. Three counts sit on top (in
+progress, ready, and open at all, blocked and deferred ones included), and a
+search box narrows both lists by ID and title, plus the daemon's full-text hits
+from two characters on. Picking an issue opens it in the Beads tab, with its
+branch expanded, and the tab is opened if it was not. Who "you" are is the name
+in the plugin's settings page, the one **Assign to me** writes; without it the
+panel says so and offers the way there. The explorer reads the same list as the
+tab, from the same cache, and joins the same change check, so with the tab open
+it asks the daemon for nothing more. It fits the sidebar's widths, from Paseo's
+240 px minimum up.
+
+![The explorer panel: issues in progress and ready, counts and a search](../tests/preview-explorer-dark-en.png)
+
 **The tree.** Hierarchy by `parent` / `parent-child` links (not by parsing the
 dotted notation in IDs, which is cosmetic). A node carries a priority icon, the
 type, ID, title, status, child count, a `ready`/`blocked` marker and the first

@@ -50,6 +50,17 @@ on this page, and the test suite checks that it stays that way.
 | ![](../tests/preview-narrow-card-ru.png) | |
 | …a picked issue: its card in the tree's place, "Tree" leads back | |
 
+## In the explorer
+
+The panel in Paseo's right sidebar: the reader's own issues, in progress and ready.
+
+| | |
+|---|---|
+| ![](../tests/preview-explorer-dark-en.png) | ![](../tests/preview-explorer-light-ru.png) |
+| Beside the open tab, 320 px: counts, a search, the two sections | Light, Russian, on its own |
+| ![](../tests/preview-explorer-narrow-en.png) | ![](../tests/preview-explorer-noname-en.png) |
+| Paseo's narrowest explorer, 240 px, with a search on | No name set in the settings: the way to set it |
+
 ## The board
 
 The same issues laid out by status, one lane per status the project uses. The

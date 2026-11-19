@@ -442,6 +442,25 @@ const en = {
   assignToMe: 'Assign to me',
   assigning: 'assigning…',
   assignFailed: 'bd refused the assignment',
+
+  // The explorer's compact view (client/explorer.tsx).
+  exDoing: 'In progress',
+  exReady: 'Ready',
+  exCountDoing: 'in progress',
+  exCountReady: 'ready',
+  exCountOpen: 'open',
+  exCountOpenTip: 'Assigned to you and not closed — blocked and deferred ones too.',
+  exMine: (name: string) => `Assigned to ${name}`,
+  exSearch: 'Search my issues',
+  exNoName: 'Set your name to see your issues',
+  exNoNameHint: 'This list shows the issues assigned to you: in progress and ready to pick up. Your name is the one in the plugin settings, the same that “Assign to me” writes.',
+  exOpenSettings: 'Open settings',
+  exNothing: 'Nothing of yours is in progress or ready',
+  exNothingHint: (name: string) => `An issue is yours when its assignee is “${name}”.`,
+  exNoMatch: 'None of your issues match the search',
+  exSectionEmpty: 'none',
+  exOpenTab: 'Open the Beads tab',
+  exOpenIssue: 'Open in the Beads tab',
 };
 
 export type Strings = typeof en;
@@ -867,6 +886,24 @@ const ru: Strings = {
   assignToMe: 'Назначить меня',
   assigning: 'назначаем…',
   assignFailed: 'bd отказал в назначении',
+
+  exDoing: 'В работе',
+  exReady: 'Готовы к работе',
+  exCountDoing: 'в работе',
+  exCountReady: 'готовы',
+  exCountOpen: 'открыты',
+  exCountOpenTip: 'Назначены на вас и не закрыты — заблокированные и отложенные тоже.',
+  exMine: (name: string) => `Назначены на ${name}`,
+  exSearch: 'Поиск по моим задачам',
+  exNoName: 'Укажите своё имя, чтобы увидеть свои задачи',
+  exNoNameHint: 'Здесь — задачи, назначенные на вас: в работе и готовые к работе. Ваше имя задаётся в настройках плагина, то же самое пишет «Назначить меня».',
+  exOpenSettings: 'Открыть настройки',
+  exNothing: 'У вас нет задач в работе или готовых к работе',
+  exNothingHint: (name: string) => `Задача ваша, если её исполнитель — «${name}».`,
+  exNoMatch: 'Среди ваших задач ничего не нашлось',
+  exSectionEmpty: 'нет',
+  exOpenTab: 'Открыть вкладку Beads',
+  exOpenIssue: 'Открыть во вкладке Beads',
 };
 
 export const STRINGS: Record<"en" | "ru", Strings> = { en, ru };

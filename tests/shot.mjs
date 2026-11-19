@@ -26,6 +26,13 @@
  *   preview-columns-light-en       the column panel, Assignee + Updated on
  *   preview-link-cols-dark-en      a card's linked-list column picker
  *   preview-splitter-dark-en       the card pane dragged wider
+ *   preview-explorer-dark-en       the explorer panel (320 px) beside the open tab: the reader's
+ *                                  issues in progress and ready, counts, search (fixture `mine`)
+ *                                  (checked: opening it sends no beads.tree — the tab's cache is
+ *                                  shared; a picked row opens its card in the tab)
+ *   preview-explorer-light-ru      the explorer alone, light, Russian (it loads the tree itself)
+ *   preview-explorer-narrow-en     the explorer at Paseo's minimum 240 px, a search on
+ *   preview-explorer-noname-en     no reader's name in the settings: the way to set it
  *
  * Writes tests/<frame>.png. Look at them before committing.
  * Needs the local Paseo daemon (127.0.0.1:6767) with the beads plugin loaded;
@@ -36,7 +43,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { FIXTURE } from './fixture/build.mjs';
-import { closeBrowser, shot, withPanel, withWorkspace } from './lib/paseo-web.mjs';
+import { closeBrowser, openExplorer, resizeExplorer, setSettings, shot, withPanel, withWorkspace } from './lib/paseo-web.mjs';
 
 const argv = process.argv.slice(2);
 const only = argv.includes('--only') ? argv[argv.indexOf('--only') + 1] ?? '' : '';
@@ -278,6 +285,80 @@ try {
           await page.mouse.move(0, 0);
           files.push(await shot(page, 'preview-stale-en', { panel }));
         });
+      }
+    });
+  }
+  const explorerFrames = ['preview-explorer-dark-en', 'preview-explorer-light-ru', 'preview-explorer-narrow-en', 'preview-explorer-noname-en'];
+  if (explorerFrames.some(want)) {
+    await withWorkspace({ mode: 'bd', mine: true }, async (workspace) => {
+      /** The explorer's first rows are in and the pointer is off them. */
+      const settled = async (/** @type {any} */ page, /** @type {any} */ ex) => {
+        await ex.locator('[data-testid^="beads-explorer-row-"]').first().waitFor({ timeout: 30_000 });
+        await page.mouse.move(0, 0);
+        await page.waitForTimeout(400);
+      };
+      try {
+        setSettings({ currentUser: FIXTURE.reader });
+        if (want('preview-explorer-dark-en')) {
+          await withPanel({ workspace, theme: 'dark', locale: 'en', ready }, async ({ page }) => {
+            await page.locator('[data-testid="beads-row-demo-a1"]').waitFor({ timeout: 30_000 });
+            // Count what the page asks the daemon from here on.
+            await page.evaluate(() => {
+              const w = /** @type {any} */ (window);
+              w.__beadsRpc = [];
+              const send = WebSocket.prototype.send;
+              WebSocket.prototype.send = function (/** @type {any} */ data) {
+                const m = typeof data === 'string' && data.includes('"plugin.rpc.invoke.request"') ? /"method":"(beads\.[a-zA-Z]+)"/.exec(data) : null;
+                if (m) w.__beadsRpc.push(m[1]);
+                return send.call(this, data);
+              };
+            });
+            const rpcs = () => page.evaluate(() => /** @type {any} */ (window).__beadsRpc.splice(0));
+            const ex = await openExplorer(page);
+            await settled(page, ex);
+            await page.waitForTimeout(1000);
+            const onOpen = await rpcs();
+            assert.ok(!onOpen.includes('beads.tree'), `opening the explorer beside a loaded tab sent ${JSON.stringify(onOpen)}`);
+            console.log(`  explorer: opened beside the tab with RPCs ${JSON.stringify(onOpen)} (no beads.tree)`);
+            files.push(await shot(page, 'preview-explorer-dark-en', { panel: ex }));
+            await ex.locator('[data-testid="beads-explorer-row-demo-b7.1"]').click();
+            const title = page.locator('[data-testid="workspace-pane-main"] [data-testid="beads-card-title"]');
+            await title.filter({ hasText: 'Drag layer keeps the pointer offset' }).waitFor({ timeout: 15_000 });
+            console.log(`  explorer: a picked row opened its card in the tab (RPCs ${JSON.stringify(await rpcs())})`);
+          });
+        }
+        if (want('preview-explorer-light-ru')) {
+          await withPanel({ workspace, theme: 'light', locale: 'ru', open: false }, async ({ page }) => {
+            const ex = await openExplorer(page);
+            await settled(page, ex);
+            files.push(await shot(page, 'preview-explorer-light-ru', { panel: ex }));
+          });
+        }
+        if (want('preview-explorer-narrow-en')) {
+          await withPanel({ workspace, theme: 'dark', locale: 'en', open: false }, async ({ page }) => {
+            const ex = await openExplorer(page);
+            await settled(page, ex);
+            assert.equal(await resizeExplorer(page, 240), 240);
+            await ex.locator('[data-testid="beads-explorer-search"]').fill('perm');
+            await page.locator('[data-testid="beads-explorer-row-demo-b7.1"]').waitFor({ state: 'detached', timeout: 10_000 });
+            await page.waitForTimeout(600);
+            files.push(await shot(page, 'preview-explorer-narrow-en', { panel: ex }));
+          });
+        }
+        if (want('preview-explorer-noname-en')) {
+          setSettings();
+          await withPanel({ workspace, theme: 'dark', locale: 'en', open: false }, async ({ page }) => {
+            const ex = await openExplorer(page);
+            await ex.locator('[data-testid="beads-explorer-empty-noname"]').waitFor({ timeout: 30_000 });
+            await page.mouse.move(0, 0);
+            files.push(await shot(page, 'preview-explorer-noname-en', { panel: ex }));
+            await ex.locator('[data-testid="beads-explorer-settings"]').click();
+            await page.locator('[data-testid="beads-settings-name"]').waitFor({ timeout: 15_000 });
+            console.log('  explorer: "Open settings" leads to the plugin\'s settings page');
+          });
+        }
+      } finally {
+        setSettings();
       }
     });
   }

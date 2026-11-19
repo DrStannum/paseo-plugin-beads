@@ -554,6 +554,11 @@ export const FIXTURE = {
   cards: CARDS,
   /** The dashboard's own, larger project — merged in only when asked for. */
   team: TEAM_ISSUES,
+  /**
+   * The reader the explorer's frames are drawn for: the assignee of
+   * demo-a1.2 and demo-a1.5, and of more with the `mine` fixture option.
+   */
+  reader: 'alex@example.com',
   /** The moment the dashboard shots pretend it is, so their axes hold still. */
   teamNow: TEAM_NOW,
   /**

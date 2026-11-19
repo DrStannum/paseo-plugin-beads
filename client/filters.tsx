@@ -28,9 +28,9 @@ import { Backdrop, Btn, Dropdown, LabelChip, Mark, StatusDot, TypeGlyph } from "
 export type ToolPanel = "filters" | "columns" | null;
 
 /** The web input's focus ring is the host's; keep the box the reference's. */
-const NO_OUTLINE = Platform.OS === "web" ? ({ outlineStyle: "none" } as object) : null;
+export const NO_OUTLINE = Platform.OS === "web" ? ({ outlineStyle: "none" } as object) : null;
 
-function inputStyle(pal: Palette) {
+export function inputStyle(pal: Palette) {
   return {
     height: 30, borderWidth: 1, borderColor: pal.border, borderRadius: 8, paddingHorizontal: 9,
     color: pal.ink, backgroundColor: pal.card, fontSize: FONT.control,

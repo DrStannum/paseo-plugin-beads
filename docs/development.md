@@ -99,7 +99,8 @@ another workspace opens the same `.beads`; `contribute()` returns at once and th
 sweep runs after it, or not at all if the plugin is stopped first.
 
 The rest are pure logic: the tree, filters and search (`tree`, `filters`), the
-board's lanes and drag arithmetic (`board`), the edit form's diff and the settings
+board's lanes and drag arithmetic (`board`), the explorer's "my work" lists,
+counts and search (`explorer`), the edit form's diff and the settings
 schema (`form`), chart aggregations and scenes (`charts`, `chart-scene`,
 `charts-view`), the Markdown renderer with its hostile inputs (`markdown`), the
 string tables of both languages (`strings`), and the documentation (`docs`: every
@@ -140,7 +141,10 @@ How it works (`tests/lib/paseo-web.mjs`):
 - **Scripted checks.** The board script drags a card with the mouse and checks
   with `bd show` that the status was written; the writes script edits, creates,
   comments, signs a comment with a name set on the settings page and syncs,
-  through the UI, and checks every result with `bd`.
+  through the UI, and checks every result with `bd`. The explorer frames are drawn
+  with a reader's name set for the run (and back to the default after), count
+  the page's RPCs to check that opening the explorer beside a loaded tab sends no
+  `beads.tree`, and check that a picked row opens its card in the tab.
 
 The run ends with a gallery check: every `tests/preview-*.png` was drawn by this
 run (otherwise it is an orphan and has to go), every drawn PNG is listed in its
@@ -149,7 +153,7 @@ starts as a line in "Frames:", and as a row in [Screenshots](screenshots.md).
 
 **Never on a real project.** Screenshots and measurements run on the synthetic
 fixture only: issue text can carry secrets. Need volume? The fixture has options
-for it (`many`, `rich`, `people`); do not create issues in a frame with
+for it (`many`, `rich`, `people`, and `mine` for a fuller "my work" list); do not create issues in a frame with
 `bd create`, which mints random ids and current dates.
 
 **If you change the UI, re-run the affected frames, look at them, and commit the

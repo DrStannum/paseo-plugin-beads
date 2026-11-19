@@ -1,14 +1,15 @@
 /**
  * The tree's empty states (reference renderEmptyTree): loading, nothing
  * matches the filters, and every "nothing to show because something is
- * wrong" code, each with a Retry.
+ * wrong" code, each with a Retry. EmptyBox is the look alone, which the
+ * explorer shares.
  */
 
 import { Text, View } from "react-native";
 import type { Failure } from "../shared/types.ts";
 import { useBeads } from "./beads.tsx";
 import type { Strings } from "./i18n/strings.ts";
-import { FONT, MONO, MONO_DOM, mix } from "./theme.ts";
+import { FONT, MONO, MONO_DOM, mix, type Palette } from "./theme.ts";
 import { Btn } from "./ui.tsx";
 
 /**
@@ -50,8 +51,32 @@ export function EmptyState({ kind }: { kind: "loading" | "filtered" | "failure" 
     hint = t.emptyNoBeadsHint;
   }
   return (
-    <View testID={`beads-empty-${kind}`} style={{ alignSelf: "center", alignItems: "center", maxWidth: 420, padding: 28, gap: 6, marginVertical: 24 }}>
-      <Text style={{ color: pal.ink, fontSize: 15, fontWeight: "600", textAlign: "center" }}>{head}</Text>
+    <EmptyBox
+      pal={pal}
+      testID={`beads-empty-${kind}`}
+      head={head}
+      hint={hint}
+      action={kind === "failure" ? { label: t.retryLoad, testID: "beads-empty-retry", onPress: () => void data.load("manual") } : null}
+    />
+  );
+}
+
+/**
+ * The look of an empty state, without the panel's context: the tab's tree
+ * (EmptyState) and the explorer (client/explorer.tsx) draw the same one.
+ * `compact` — a narrow column: less padding, smaller heading.
+ */
+export function EmptyBox({ pal, head, hint, action, testID, compact }: {
+  pal: Palette;
+  head: string;
+  hint?: string;
+  action?: { label: string; onPress: () => void; testID?: string } | null;
+  testID?: string;
+  compact?: boolean;
+}) {
+  return (
+    <View testID={testID} style={{ alignSelf: "center", alignItems: "center", maxWidth: 420, padding: compact ? 14 : 28, gap: 6, marginVertical: compact ? 12 : 24 }}>
+      <Text style={{ color: pal.ink, fontSize: compact ? 14 : 15, fontWeight: "600", textAlign: "center" }}>{head}</Text>
       {hint ? (
         <Text style={{ color: pal.muted, fontSize: FONT.md, textAlign: "center", lineHeight: 19 }}>
           {/* `bd init` in a hint is a command: drawn as code, not with its backticks. */}
@@ -64,9 +89,7 @@ export function EmptyState({ kind }: { kind: "loading" | "filtered" | "failure" 
           )}
         </Text>
       ) : null}
-      {kind === "failure" ? (
-        <Btn pal={pal} label={t.retryLoad} testID="beads-empty-retry" style={{ marginTop: 10 }} onPress={() => void data.load("manual")} />
-      ) : null}
+      {action ? <Btn pal={pal} label={action.label} testID={action.testID} style={{ marginTop: 10 }} onPress={action.onPress} /> : null}
     </View>
   );
 }

@@ -66,6 +66,20 @@ const EXTRA_COMMENTS = {
   ],
 };
 
+/**
+ * What `mine: true` changes, per issue: FIXTURE.reader becomes the assignee,
+ * plus these fields.
+ * @type {Record<string, Record<string, string>>}
+ */
+const MINE = {
+  'demo-a1.4': {},
+  'demo-b7.1': {},
+  'demo-e4': {},
+  'demo-c2.1': { status: 'in_progress', started_at: '2026-07-29T10:00:00Z' },
+  'demo-a1.3': {}, // open, blocked by demo-a1.2: not ready
+  'demo-b7.3': {}, // blocked by status
+};
+
 /** Strip milliseconds: bd stores timestamps to the second. */
 function ts(/** @type {string | null | undefined} */ v) {
   return v ? v.replace(/\.\d{3}Z$/, 'Z') : null;
@@ -250,13 +264,17 @@ export function removeFixtureDir(/** @type {string} */ dir) {
  * labels, kilobytes of description / design / acceptance text and a comment
  * on every fifth — the shape behind bd's load time on a large project
  * (tests/bench-large.mjs). Still invented text, deterministic timestamps.
+ * `mine: true` gives FIXTURE.reader more of the main project's issues
+ * (MINE): a fuller "my work" list for the explorer's frames — some ready,
+ * one more in progress, one open but blocked and one blocked by status
+ * (neither listed). The base data stays as it is for every other frame.
  * `tag` gives a run its own directory, so two shot scripts running at once
  * never build over each other's fixture.
  *
- * @param {{ mode?: 'bd' | 'jsonl', team?: boolean, variant?: 'main' | 'other' | 'bare', many?: number, rich?: boolean, people?: boolean, tag?: string }} [opts]
+ * @param {{ mode?: 'bd' | 'jsonl', team?: boolean, variant?: 'main' | 'other' | 'bare', many?: number, rich?: boolean, people?: boolean, mine?: boolean, tag?: string }} [opts]
  * @returns {{ dir: string, name: string, prefix: string, mode: 'bd' | 'jsonl', rows: any[], cleanup: () => void }}
  */
-export function buildFixture({ mode = 'bd', team = false, variant = 'main', many = 0, rich = false, people = false, tag = '' } = {}) {
+export function buildFixture({ mode = 'bd', team = false, variant = 'main', many = 0, rich = false, people = false, mine = false, tag = '' } = {}) {
   if (variant === 'bare') {
     const owner = path.join(FIXTURE_ROOT, 'bare');
     const dir = path.join(owner, 'demo-empty');
@@ -268,7 +286,7 @@ export function buildFixture({ mode = 'bd', team = false, variant = 'main', many
   }
   const name = variant === 'other' ? 'demo-docs' : 'demo-shop';
   const prefix = variant === 'other' ? FIXTURE.other.prefix : FIXTURE.tree.prefix;
-  const key = [variant, mode, team ? 'team' : null, many ? `many${many}` : null, rich ? 'rich' : null, people ? 'people' : null, tag || null].filter(Boolean).join('-');
+  const key = [variant, mode, team ? 'team' : null, many ? `many${many}` : null, rich ? 'rich' : null, people ? 'people' : null, mine ? 'mine' : null, tag || null].filter(Boolean).join('-');
   const owner = path.join(FIXTURE_ROOT, key);
   const dir = path.join(owner, name);
   // A leftover from a crashed run: ours (marker present) is replaced.
@@ -277,6 +295,9 @@ export function buildFixture({ mode = 'bd', team = false, variant = 'main', many
   fs.writeFileSync(path.join(owner, MARKER), 'built by tests/fixture/build.mjs; safe to delete\n');
 
   const rows = fixtureRows({ team, variant: variant === 'other' ? 'other' : 'main', mode });
+  if (mine && variant !== 'other') {
+    for (const r of rows) if (MINE[r.id]) Object.assign(r, { assignee: FIXTURE.reader }, MINE[r.id]);
+  }
   for (let i = 1; i <= many; i++) rows.push(rich ? richRow(prefix, i) : {
     _type: 'issue', id: `${prefix}-x${String(i).padStart(3, '0')}`, title: `Backlog item ${i}`,
     status: 'open', priority: 3, issue_type: 'task', created_at: NO_CREATED_AT, updated_at: NO_CREATED_AT,

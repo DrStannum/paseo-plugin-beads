@@ -134,6 +134,18 @@ export function pinSettings() {
   fs.writeFileSync(SETTINGS_FILE, PINNED_SETTINGS, { mode: 0o600 });
 }
 
+/**
+ * Draw the next pages with these settings over the defaults (the explorer's
+ * frames need a reader's name); no argument puts the defaults back. Only
+ * inside a pinned run: the original file comes back at the end either way.
+ * A page reads the file when it opens, so call this before withPanel.
+ * @param {Partial<typeof SETTINGS_DEFAULT>} [values]
+ */
+export function setSettings(values = {}) {
+  pinSettings();
+  fs.writeFileSync(SETTINGS_FILE, JSON.stringify({ version: 1, values: { ...SETTINGS_DEFAULT, ...values } }), { mode: 0o600 });
+}
+
 // ---------------------------------------------------------------------------
 // Paseo registration
 
@@ -156,7 +168,7 @@ function dropStaleProjects(/** @type {string} */ dir) {
 }
 
 /**
- * @typedef {{ mode?: 'bd' | 'jsonl', team?: boolean, variant?: 'main' | 'other' | 'bare', many?: number, rich?: boolean, people?: boolean, tag?: string }} FixtureOptions
+ * @typedef {{ mode?: 'bd' | 'jsonl', team?: boolean, variant?: 'main' | 'other' | 'bare', many?: number, rich?: boolean, people?: boolean, mine?: boolean, tag?: string }} FixtureOptions
  * @typedef {{ dir: string, name: string, projectId: string, workspaceId: string, serverId: string, fixture: ReturnType<typeof buildFixture> | null }} Workspace
  */
 
@@ -333,6 +345,54 @@ export async function withPanel(opts, fn) {
   } finally {
     await context.close();
   }
+}
+
+/**
+ * Show Paseo's explorer sidebar and open the beads explorer panel in it the
+ * way a reader does (its "+" menu), unless one is open already. Returns the
+ * panel (`[data-testid="beads-explorer"]`) — shot() it with `panel:`.
+ * @param {any} page
+ */
+export async function openExplorer(page) {
+  const side = page.locator('[data-testid="workspace-explorer-sidebar"]');
+  if (!(await side.isVisible().catch(() => false))) {
+    await page.locator('[data-testid="workspace-explorer-toggle"]').first().click();
+    await side.waitFor({ state: 'visible', timeout: 10_000 });
+  }
+  const panel = side.locator('[data-testid="beads-explorer"]');
+  if (!(await panel.count())) {
+    await side.locator('[data-testid="workspace-new-tab-button"]').first().click();
+    await page.locator('[data-testid="workspace-new-tab-menu-plugin:beads:beads-explorer"]').click();
+  }
+  await panel.waitFor({ timeout: 30_000 });
+  return panel;
+}
+
+/**
+ * Drag the explorer sidebar's edge until the sidebar is `width` px wide
+ * (Paseo keeps 240 as its minimum). Returns the width it ended at.
+ * @param {any} page
+ * @param {number} width
+ */
+export async function resizeExplorer(page, width) {
+  const side = page.locator('[data-testid="workspace-explorer-sidebar"]');
+  const handle = page.locator('[data-testid="workspace-explorer-sidebar-resize-handle"]');
+  for (let i = 0; i < 3; i++) {
+    const box = await side.boundingBox();
+    const h = await handle.boundingBox();
+    if (!box || !h) throw new Error('the explorer sidebar is not on screen');
+    if (Math.abs(box.width - width) <= 1) break;
+    const x = h.x + h.width / 2;
+    const y = h.y + h.height / 2;
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x + (box.width - width) / 2, y, { steps: 4 });
+    await page.mouse.move(x + (box.width - width), y, { steps: 4 });
+    await page.mouse.up();
+    await page.waitForTimeout(300);
+  }
+  await page.mouse.move(0, 0);
+  return Math.round((await side.boundingBox())?.width ?? 0);
 }
 
 /**
