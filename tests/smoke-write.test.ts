@@ -8,15 +8,17 @@
  * turns dolt auto-commit on, and `delete` is refused before bd is reached.
  */
 
-import { after, before, describe, it } from "node:test";
+import { after, before, beforeEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import {
   commentRpc, createRpc, editRpc, exportRpc, jobStatusRpc, revisionRpc, syncRpc, treeRpc,
 } from "../shared/rpc.ts";
-import { comment, create, edit, exportNow, jobStatus, revision, sync, tree } from "../server/handlers.ts";
+import { comment, create, edit, exportNow, jobStatus, revision, sync, tree, workspaceArchived } from "../server/handlers.ts";
 import { runBdWrite, WRITE_SUBCOMMANDS } from "../server/beads/run.ts";
-import { call, captureLogs, fakeCtx, makeProject, makeStub, sleep, usePath, type Stub } from "./support/harness.ts";
+import {
+  call, captureLogs, exportsIdle, fakeCtx, makeProject, makeStub, sleep, usePath, type Stub,
+} from "./support/harness.ts";
 
 const ORIGINAL_PATH = process.env.PATH || "";
 const ORIGINAL_ACTOR = process.env.BEADS_ACTOR;
@@ -267,5 +269,105 @@ describe("write invariant", () => {
     for (const s of ["Stub issue", "edited", "made here", "from the card", "reader@example.com"]) {
       assert.ok(!all.includes(s), `"${s}" reached the log`);
     }
+  });
+});
+
+/**
+ * The export state is kept per `.beads` path, and a path outlives its project:
+ * archive the workspace, make a new project there, and the panel must not open
+ * on the old one's failed export.
+ */
+describe("export state of a project that is gone", () => {
+  let stub: Stub;
+  let project: string;
+  let ctx: ReturnType<typeof fakeCtx>;
+  const ws = { workspaceId: "ws" };
+  const quiet = captureLogs();
+
+  before(() => {
+    stub = makeStub(SEED);
+    project = makeProject();
+    ctx = fakeCtx({ ws: project, twin: project });
+  });
+  beforeEach(() => {
+    stub.config({ failExport: true });
+    usePath(stub.dir, ORIGINAL_PATH);
+  });
+  after(async () => {
+    await exportsIdle();
+    quiet.restore();
+    stub.remove();
+    fs.rmSync(project, { recursive: true, force: true });
+    usePath(null, ORIGINAL_PATH);
+  });
+
+  const status = async (id = "ws") => (await call(jobStatusRpc, jobStatus, { workspaceId: id }, ctx)).export;
+
+  async function failedExport() {
+    await call(exportRpc, exportNow, ws, ctx);
+    await exportsIdle();
+    const exp = await status();
+    assert.match(exp.lastError ?? "", /out of date/);
+    assert.equal(exp.stale, true);
+  }
+
+  it("archiving the workspace forgets a failed export", async () => {
+    await failedExport();
+    workspaceArchived({ id: "ws", cwd: project });
+    const exp = await status();
+    assert.equal(exp.lastError, null);
+    assert.equal(exp.stale, false);
+    assert.equal(exp.runs, 0);
+    const rev = await call(revisionRpc, revision, ws, ctx);
+    assert.equal(rev.export.stale, false, "beads.revision: no badge for the new project");
+  });
+
+  it("another workspace on the same .beads keeps it", async () => {
+    await failedExport();
+    await status("twin");
+    workspaceArchived({ id: "ws", cwd: project });
+    assert.match((await status("twin")).lastError ?? "", /out of date/);
+  });
+
+  it("an export running at the archive is joined, not run twice, and forgotten once it ends", async () => {
+    stub.config({ failExport: true, exportSleepMs: 300 });
+    const before = stub.count("export");
+    await call(exportRpc, exportNow, ws, ctx);
+    await sleep(50);
+    workspaceArchived({ id: "ws", cwd: project });
+    const mid = await status();
+    assert.equal(mid.running, true, "the running export still owns the slot");
+    await exportsIdle();
+    const exp = await status();
+    assert.equal(exp.lastError, null, "its outcome went with the archived workspace");
+    assert.equal(exp.runs, 0);
+    assert.equal(stub.count("export") - before, 1);
+  });
+
+  it("a request while the archived export runs waits for it and keeps its outcome", async () => {
+    stub.config({ failExport: true, exportSleepMs: 300 });
+    const before = stub.count("export");
+    await call(exportRpc, exportNow, ws, ctx);
+    await sleep(50);
+    workspaceArchived({ id: "ws", cwd: project });
+    const again = await call(exportRpc, exportNow, ws, ctx);
+    assert.equal(again.export.running, true);
+    assert.equal(again.export.pending, true, "joined the running export as the one owed pass");
+    await exportsIdle();
+    const exp = await status();
+    assert.equal(stub.count("export") - before, 2, "one after the other, never side by side");
+    assert.equal(exp.runs, 2);
+    assert.match(exp.lastError ?? "", /out of date/, "the new request's own outcome");
+  });
+
+  it("a .beads made again at the same path starts clean, archived or not", async () => {
+    await failedExport();
+    fs.rmSync(`${project}/.beads`, { recursive: true, force: true });
+    fs.mkdirSync(`${project}/.beads`);
+    fs.writeFileSync(`${project}/.beads/config.yaml`, "prefix: stub\n");
+    const exp = await status();
+    assert.equal(exp.lastError, null);
+    assert.equal(exp.stale, false);
+    assert.equal(exp.runs, 0);
   });
 });

@@ -82,6 +82,8 @@ export interface StubConfig {
   failList?: boolean;
   listSleepMs?: number;
   exportSleepMs?: number;
+  /** `bd export` fails like a file it cannot write. */
+  failExport?: boolean;
 }
 
 /**
@@ -136,6 +138,7 @@ if (sub === 'import') {
 }
 if (sub === 'export') {
   sleepMs(cfg.exportSleepMs || 0);
+  if (cfg.failExport) fail('Error: issues.jsonl is out of date');
   const o = valueOf('-o');
   if (o) fs.writeFileSync(o, issues.map((i) => JSON.stringify(i)).join('\\n') + '\\n');
   process.exit(0);

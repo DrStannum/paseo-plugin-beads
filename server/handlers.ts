@@ -34,7 +34,7 @@ import {
 import { issueCard, searchIssues } from "./beads/card.ts";
 import { deltaFrom, remember, rowsOf } from "./beads/history.ts";
 import { planComment, planCreate, planEdit, runComment, runCreate, runEdit } from "./beads/write.ts";
-import { exportStatus, requestExport, requestSync } from "./beads/export.ts";
+import { exportStatus, forgetExport, requestExport, requestSync } from "./beads/export.ts";
 import { within } from "./beads/timers.ts";
 import { log } from "./beads/log.ts";
 
@@ -337,7 +337,8 @@ export function jobStatus(input: RpcInput<typeof jobStatusRpc>, ctx: Ctx): Promi
 
 /**
  * A workspace was archived: forget its project's snapshot, in memory and on
- * disk — unless another workspace this process has seen opens the same
+ * disk, and its export state (a new project on the same path must not open
+ * on the old one's failed export) — unless another workspace this process has seen opens the same
  * `.beads`. One it has not seen (opened before a restart, not asked since)
  * may share it too; then its next open is a cold load, nothing worse.
  */
@@ -352,7 +353,8 @@ export function workspaceArchived(workspace: { id: string; cwd: string }): void 
     if (!beadsDir) return;
     for (const other of seen.values()) if (other === beadsDir) return;
     forgetProject(beadsDir);
-    log("disk cache: a workspace was archived, its project's snapshot dropped");
+    forgetExport(beadsDir);
+    log("disk cache: a workspace was archived, its project's snapshot and export state dropped");
   } catch (err) {
     log(`workspace.archived failed: ${(err as Error)?.message ?? String(err)}`);
   }

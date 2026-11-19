@@ -72,20 +72,57 @@ interface Slot {
   supersededFrom: string | null;
   revision: string | null;
   loop: Promise<void> | null;
+  /** Which `.beads` directory the state is about (see identityOf). */
+  identity: string | null;
+  /** Its workspace was archived mid-run: drop the slot once the loop ends, unless asked again. */
+  forgotten: boolean;
 }
 
+/**
+ * Keyed by the `.beads` path, which outlives the project there: an archived
+ * workspace (forgetExport) or a `.beads` deleted and made again (identity)
+ * must not hand its old error or counters to the next project on that path.
+ */
 const slots = new Map<string, Slot>();
+
+/** The directory itself, not its path: device, inode and birth time. Null when it is gone. */
+function identityOf(beadsDir: string): string | null {
+  try {
+    const st = fs.statSync(beadsDir);
+    return `${st.dev}:${st.ino}:${Math.round(st.birthtimeMs)}`;
+  } catch {
+    return null;
+  }
+}
 
 function exportSlot(beadsDir: string): Slot {
   let slot = slots.get(beadsDir);
+  const identity = identityOf(beadsDir);
+  // Another directory at this path: the old outcome is not this project's.
+  // A running loop keeps its slot (a second one would export alongside it);
+  // its next pass records the new identity.
+  if (slot && !slot.running && slot.identity !== identity) slot = undefined;
   if (!slot) {
     slot = {
       root: "", running: false, dirty: false, lastOkAt: null, lastError: null, lastDurationMs: null,
       runs: 0, wantImport: false, syncPass: false, lastImport: null, supersededFrom: null, revision: null, loop: null,
+      identity, forgotten: false,
     };
     slots.set(beadsDir, slot);
   }
   return slot;
+}
+
+/**
+ * A workspace on this `.beads` was archived and no other known one uses it:
+ * forget the export state. A loop still running keeps the slot until it ends,
+ * so a request meanwhile joins it rather than starting a second export.
+ */
+export function forgetExport(beadsDir: string): void {
+  const slot = slots.get(beadsDir);
+  if (!slot) return;
+  if (slot.running) slot.forgotten = true;
+  else slots.delete(beadsDir);
 }
 
 export function exportStatus(beadsDir: string): ExportStatus {
@@ -117,6 +154,7 @@ export function exportStatus(beadsDir: string): ExportStatus {
 export function requestExport(root: string, beadsDir: string): void {
   const slot = exportSlot(beadsDir);
   slot.root = root;
+  slot.forgotten = false;
   if (slot.running) {
     slot.dirty = true;
     return;
@@ -131,6 +169,7 @@ export function requestExport(root: string, beadsDir: string): void {
 export function requestSync(root: string, beadsDir: string): void {
   const slot = exportSlot(beadsDir);
   slot.root = root;
+  slot.forgotten = false;
   slot.wantImport = true;
   if (slot.running) {
     slot.dirty = true;
@@ -207,6 +246,7 @@ async function runExportLoop(slot: Slot, beadsDir: string): Promise<void> {
   try {
     do {
       slot.dirty = false;
+      slot.identity = identityOf(beadsDir);
       const withImport = slot.wantImport;
       slot.wantImport = false;
       slot.syncPass = withImport;
@@ -247,5 +287,6 @@ async function runExportLoop(slot: Slot, beadsDir: string): Promise<void> {
   } finally {
     slot.running = false;
     slot.syncPass = false;
+    if (slot.forgotten && slots.get(beadsDir) === slot) slots.delete(beadsDir);
   }
 }
